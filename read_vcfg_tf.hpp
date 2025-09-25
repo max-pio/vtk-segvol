@@ -139,13 +139,13 @@ public:
             in >> tmp; // VOLCANITE_VERSION
 
             if (!readParameters(in, mats)) {
-                std::cout << "Could not import rendering parameters from " << path;
+                std::cout << "Could not import rendering parameters from " << path << std::endl;
             } else {
-                std::cout << "Imported rendering parameters from " << path;
+                std::cout << "Imported rendering parameters from " << path << std::endl;
             }
             in.close();
         } else {
-            std::cout << "Could not open parameter file " << path;
+            std::cout << "Could not open parameter file " << path << std::endl;
         }
         return mats;
     }

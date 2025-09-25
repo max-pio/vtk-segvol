@@ -61,22 +61,80 @@ void save_image(const vtkSmartPointer<vtkRenderWindow>& renderWindow)
     }
 }
 
+struct Interval {
+    uint32_t start;
+    uint32_t end;
+};
+
+std::vector<Interval> mergeIntervals(std::vector<Interval> &intervals) {
+    if (intervals.empty()) {
+        return {};
+    }
+
+    // Sort intervals by their start value
+    std::sort(intervals.begin(), intervals.end(), [](const Interval a, const Interval b) {
+        return a.start < b.start;
+    });
+
+    std::vector<Interval> merged;
+
+    // Push first interval to merged
+    merged.push_back(intervals[0]);
+
+    for (size_t i = 1; i < intervals.size(); ++i) {
+        // Reference to last merged interval
+
+        if (Interval last = merged.back(); last.end >= intervals[i].start) {
+            // If overlapping, merge by extending the end if needed
+            if (last.end < intervals[i].end) {
+                last.end = intervals[i].end;
+            }
+        } else {
+            // No overlap, add interval to merged
+            merged.push_back(intervals[i]);
+        }
+    }
+
+    return merged;
+}
+
 int main(int argc, char* argv[])
 {
     // these could be command line arguments:
     const std::string VTI_PATH = "/media/maxpio/data/eval/azba/azba.hdf5";
     //const std::string VTI_PATH = "/media/maxpio/data/eval/cells/output_cells-00055.vti";
     const std::string VCFG_PATH = "/home/maxpio/code/volcanite/eval/config/azba.vcfg";
-    constexpr int FRAMES = 1;
-    constexpr bool OFFSCREEN = false;
+    constexpr int FRAMES = 300;
+    constexpr bool OFFSCREEN = true;
 
     // SETUP -----------------------------------------------------------------------------------------------------------
 
     // load config file
     std::vector<SegmentedVolumeMaterial> mats = VcfgSegVolTFFileReader::readParameterFile(VCFG_PATH);
 
+    // merge all visible intervals
+    std::vector<Interval> intervals;
+    std::cout << "Segmentation Volume Transfer Function. Visible intervals:" << std::endl;
+    for (const auto& m : mats) {
+        if (m.discrAttribute != SegmentedVolumeMaterial::DISCR_NONE) {
+            std::cout << "[" << m.discrInterval[0] << "," << m.discrInterval[1] << "]" << std::endl;
+
+            intervals.emplace_back(m.discrInterval[0], m.discrInterval[1]);
+        }
+    }
+    intervals = mergeIntervals(intervals);
+    std::cout << "Merged intervals:" << std::endl;
+    for (const auto& i : intervals) {
+        std::cout << "[" << i.start << "," << i.end << "]" << std::endl;
+    }
+
+
+
     // load volume from disk an provide as VolumeMapper
     vtkSmartPointer<vtkGPUVolumeRayCastMapper> volumeMapper = vtkSmartPointer<vtkGPUVolumeRayCastMapper>::New();
+
+    // min/max volume labels
+    uint32_t label_min = UINT32_MAX, label_max = 0u;
 
     if (VTI_PATH.ends_with(".vti")) {
         vtkSmartPointer<vtkXMLImageDataReader> reader = vtkSmartPointer<vtkXMLImageDataReader>::New();
@@ -84,6 +142,11 @@ int main(int argc, char* argv[])
         reader->Update();
 
         volumeMapper->SetInputConnection(reader->GetOutputPort());
+
+        double range[2];
+        reader->GetOutput()->GetScalarRange(range);
+        label_min = static_cast<uint32_t>(range[0]);
+        label_max = static_cast<uint32_t>(range[1]);
     } else if (VTI_PATH.ends_with(".hdf5") || VTI_PATH.ends_with(".h5")) {
         size_t dimensions[3];
 
@@ -95,11 +158,16 @@ int main(int argc, char* argv[])
                              static_cast<int>(dimensions[2]));
         image->AllocateScalars(VTK_UNSIGNED_INT, 1);
         vvv::read_hdf5<uint32_t>(VTI_PATH, dimensions, static_cast<uint32_t*>(image->GetScalarPointer()));
-
-        //memcpy(image->GetScalarPointer(), _volume_data->data(), dimensions[0] * dimensions[1] * dimensions[2]);
-
         volumeMapper->SetInputData(image);
+
+        double range[2];
+        image->GetScalarRange(range);
+        label_min = static_cast<uint32_t>(range[0]);
+        label_max = static_cast<uint32_t>(range[1]);
     }
+
+    std::cout << "labels: [" << label_min << "," << label_max << "]" << std::endl;
+
 
     // ------------------------
 
@@ -111,10 +179,21 @@ int main(int argc, char* argv[])
     vtkSmartPointer<vtkPiecewiseFunction> opacityTF = vtkSmartPointer<vtkPiecewiseFunction>::New();
 
     // TODO: fill the opacity TF from the mats vector
-    opacityTF->AddPoint(0.0, 0.0);
-    opacityTF->AddPoint(127., 0.0);
-    opacityTF->AddPoint(128., VTK_FLOAT_MAX);
-    opacityTF->AddPoint(255.0, VTK_FLOAT_MAX);
+    opacityTF->AddPoint(0., 0.0);
+    opacityTF->AddPoint(255., 0.0);
+    for (const auto& i : intervals) {
+
+        double start = static_cast<double>(i.start - label_min) / static_cast<double>(label_max - label_min) * 255.0;
+        double end = static_cast<double>(i.end - label_min) / static_cast<double>(label_max - label_min) * 255.0;
+
+        const double EPS = 0.5 / static_cast<double>(label_max - label_min);
+        opacityTF->AddPoint(start - EPS, 0.);
+        opacityTF->AddPoint(start + EPS, VTK_FLOAT_MAX);
+        opacityTF->AddPoint(end - EPS, VTK_FLOAT_MAX);
+        opacityTF->AddPoint(end + EPS, 0.);
+
+        std::cout << ">> [" << start << "," << end << "]" << std::endl;
+    }
 
     // Step 3: Set up the volume property
     vtkSmartPointer<vtkVolumeProperty> volumeProperty = vtkSmartPointer<vtkVolumeProperty>::New();
@@ -153,7 +232,7 @@ int main(int argc, char* argv[])
             cpuRenderTime += renderer->GetLastRenderTimeInSeconds();
         }
 
-        std::cout << "Render time [ms/frame]: " << (cpuRenderTime / FRAMES * 1000.) << std::endl;
+        std::cout << "Render time [ms/frame]: " << (cpuRenderTime * 1000. / FRAMES) << std::endl;
 
         save_image(renderWindow);
     }

@@ -4,10 +4,10 @@
 #include <fstream>
 #include <iostream>
 #include <sstream>
-#include <string>
 #include <algorithm>
 #include <vector>
 
+#include "Camera.hpp"
 
 class SegmentedVolumeMaterial {
 
@@ -25,11 +25,18 @@ public:
     int wrapping = 0; // wrap mode: 0 = clamp, 1 = repeat, 2 = random
 };
 
+struct VolcaniteParameters {
+    vvv::Camera camera;
+    std::vector<SegmentedVolumeMaterial> materials;
+    glm::ivec3 axis_order; ///< permutation of 012 (xyz) axes
+    glm::bvec3 axis_flip;
+};
+
 class VcfgSegVolTFFileReader {
 
 private:
 
-    static bool readParameter(const std::string &parameter_label, std::istream &parameter_stream, std::vector<SegmentedVolumeMaterial>& mats) {
+    static bool readParameter(const std::string &parameter_label, std::istream &parameter_stream, std::vector<SegmentedVolumeMaterial>& mats, glm::ivec3& axis_order, glm::bvec3& axis_flip) {
         // check if this element list contains a parameter of the given label_name
         if (parameter_label == "Materials:") {
             size_t matCount;
@@ -79,6 +86,30 @@ private:
             }
 
             // parameter was consumed
+            std::cout << "successfully imported materials." << std::endl;
+            return true;
+        } else if (parameter_label == "Axis_Order:") {
+            std::string tmp;
+            parameter_stream >> tmp;
+            axis_order = {~0u,~0u,~0u};
+            axis_order[static_cast<int>(tmp.find('X'))] = 0;
+            axis_order[static_cast<int>(tmp.find('Y'))] = 1;
+            axis_order[static_cast<int>(tmp.find('Z'))] = 2;
+            return true;
+        } else if (parameter_label == "X_Axis:") {
+            int i;
+            parameter_stream >> i;
+            axis_flip.x = i;
+            return true;
+        } else if (parameter_label == "Y_Axis:") {
+            int i;
+            parameter_stream >> i;
+            axis_flip.y = i;
+            return true;
+        } else if (parameter_label == "Z_Axis:") {
+            int i;
+            parameter_stream >> i;
+            axis_flip.z = i;
             return true;
         } else {
             // parameter was not consumed
@@ -87,7 +118,7 @@ private:
     }
 
 
-    static bool readParameters(std::istream &in, std::vector<SegmentedVolumeMaterial> &mats) {
+    static bool readParameters(std::istream &in, VolcaniteParameters &params) {
         std::string line;
         while (!in.eof() && std::getline(in, line)) {
 
@@ -102,6 +133,12 @@ private:
             //            return true;
             //        }
 
+            // read camera parameters
+            if (line == "[Camera]") {
+                params.camera.readFrom(in, true);
+                std::cout << "successfully imported camera." << std::endl;
+            }
+
             // one line contains data for one parameter. a single parameter is read from:
             // [sanitized_parameter_label]: [parameter_values]
             std::istringstream parameter_stream(line);
@@ -109,8 +146,8 @@ private:
             parameter_stream >> parameter_label;
 
             // consumed:
-            if (readParameter(parameter_label, parameter_stream, mats))
-                return true;
+            if (readParameter(parameter_label, parameter_stream, params.materials, params.axis_order, params.axis_flip))
+                continue;
 
             if ((!parameter_stream.eof() && parameter_stream.fail()) || (!in.eof() && in.fail())) {
                 std::cout << "Error reading parameter " << parameter_label;
@@ -124,11 +161,12 @@ public:
 
     /// Reads all rendering and camera parameters from the given path.
     /// If parameters could not be imported from path, the previous parameter state is restored.
+    /// @param path path of the .vcfg file to import
     /// @param backup_parameters if the current parameters will be backed up to a tmp file and re-imported on failure
     /// @return true if parameters were successfully read from path, false otherwise
-    static std::vector<SegmentedVolumeMaterial> readParameterFile(const std::string &path) {
+    static VolcaniteParameters readParameterFile(const std::string &path) {
 
-        std::vector<SegmentedVolumeMaterial> mats;
+        VolcaniteParameters params;
 
         // Try to load selected config path
         // Load backup config in case of failure
@@ -138,7 +176,7 @@ public:
             in >> tmp; // "Version"
             in >> tmp; // VOLCANITE_VERSION
 
-            if (!readParameters(in, mats)) {
+            if (!readParameters(in, params)) {
                 std::cout << "Could not import rendering parameters from " << path << std::endl;
             } else {
                 std::cout << "Imported rendering parameters from " << path << std::endl;
@@ -147,7 +185,10 @@ public:
         } else {
             std::cout << "Could not open parameter file " << path << std::endl;
         }
-        return mats;
+
+        std::cout << "    axis order: " << params.axis_order.x << ", " << params.axis_order.y << ", " << params.axis_order.z << std::endl;
+        std::cout << "    axis flip: " << params.axis_flip.x << ", " << params.axis_flip.y << ", " << params.axis_flip.z << std::endl;
+        return params;
     }
 
 };

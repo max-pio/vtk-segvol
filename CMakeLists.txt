@@ -22,6 +22,7 @@ find_package(VTK REQUIRED COMPONENTS
         RenderingOpenGL2
         RenderingVolume
         RenderingVolumeOpenGL2
+        RenderingAnnotation
 )
 
 # extern HighFive simplified hdf5 library if libhdf5-dev is installed

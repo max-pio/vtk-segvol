@@ -11,146 +11,67 @@
 #include <vtkVolumeProperty.h>
 #include <vtkTransform.h>
 #include <vtkGPUVolumeRayCastMapper.h>
+#include <vtkOpenGLGPUVolumeRayCastMapper.h>
 #include <vtkVolume.h>
-#include <vtkWindowToImageFilter.h>
 
 #include <cstdint>
 #include <iostream>
 #include <functional>
 #include <vector>
 
-#include "stb/stb_image_write.hpp"
-
 #include "read_hdf5.hpp"
 #include "read_vcfg_tf.hpp"
+#include "util.hpp"
 
-void save_image(const vtkSmartPointer<vtkRenderWindow>& renderWindow)
-{
-    // Capture the rendered image from the render window
-    vtkSmartPointer<vtkWindowToImageFilter> windowToImageFilter = vtkSmartPointer<vtkWindowToImageFilter>::New();
-    windowToImageFilter->SetInput(renderWindow);
-    windowToImageFilter->SetInputBufferTypeToRGBA(); // Capture RGBA
-    windowToImageFilter->ReadFrontBufferOff(); // Read from back buffer
-    windowToImageFilter->Update();
+// these could be command line arguments:
+const std::string VTI_PATH = "/media/maxpio/data/eval/azba/azba.hdf5";
+const std::string VCFG_PATH = "/home/maxpio/code/volcanite/eval/config/azba.vcfg";
+const std::string CAMERA_PATH = "./azba.cam";
 
-    vtkImageData* imageData = windowToImageFilter->GetOutput();
+//const std::string VTI_PATH = "/media/maxpio/data/eval/xtm-battery/xtm-battery.hdf5";
+//const std::string VCFG_PATH = "/home/maxpio/code/volcanite/eval/config/xtm-battery.vcfg";
+//const std::string CAMERA_PATH = "./azba.cam";
 
-    int* dims = imageData->GetDimensions();
-    int width = dims[0];
-    int height = dims[1];
-    int numberOfComponents = imageData->GetNumberOfScalarComponents();
+// TODO: add other data sets, including Cells
+// TODO: make data sets command line arguments, call the binary from a bash / python script
 
-    unsigned char* vtkPixels = static_cast<unsigned char*>(imageData->GetScalarPointer());
+constexpr bool VERBOSE = false;
+constexpr int FRAMES = 300;
+constexpr bool OFFSCREEN = false;
+const std::string CAMERA_EXPORT_PATH = "./camera.cam";
 
-    // stbi_write_png expects row pointers from top-left, whereas VTK image origin is bottom-left
-    // So we need to flip vertically before saving
-    std::vector<unsigned char> flippedPixels(width * height * numberOfComponents);
-    for (int y = 0; y < height; ++y)
-    {
-        memcpy(
-            &flippedPixels[y * width * numberOfComponents],
-            &vtkPixels[(height - y - 1) * width * numberOfComponents],
-            width * numberOfComponents);
-    }
-
-    // Write PNG file using stb_image_write, with 4 components (RGBA)
-    if (stbi_write_png("./out.png", width, height, numberOfComponents, flippedPixels.data(),
-                       width * numberOfComponents))
-    {
-        std::cout << "Saved render to ./out.png\n";
-    }
-    else
-    {
-        std::cerr << "Failed to save PNG file.\n";
-    }
-}
-
-struct Interval {
-    uint32_t start;
-    uint32_t end;
-};
-
-std::vector<Interval> mergeIntervals(std::vector<Interval> &intervals) {
-    if (intervals.empty()) {
-        return {};
-    }
-
-    // Sort intervals by their start value
-    std::sort(intervals.begin(), intervals.end(), [](const Interval a, const Interval b) {
-        return a.start < b.start;
-    });
-
-    std::vector<Interval> merged;
-
-    // Push first interval to merged
-    merged.push_back(intervals[0]);
-
-    for (size_t i = 1; i < intervals.size(); ++i) {
-        // Reference to last merged interval
-
-        if (Interval last = merged.back(); last.end >= intervals[i].start) {
-            // If overlapping, merge by extending the end if needed
-            if (last.end < intervals[i].end) {
-                last.end = intervals[i].end;
-            }
-        } else {
-            // No overlap, add interval to merged
-            merged.push_back(intervals[i]);
-        }
-    }
-
-    return merged;
-}
-
-void printCameraInfo(vtkCamera* camera)
-{
-    std::cout << "Pos: " << camera->GetPosition()[0] << "," << camera->GetPosition()[1] << "," << camera->GetPosition()[2] << std::endl;
-    std::cout << "Up:  " << camera->GetViewUp()[0] << "," << camera->GetViewUp()[1] << "," << camera->GetViewUp()[2] << std::endl;
-    std::cout << "Foc: " << camera->GetFocalPoint()[0] << "," << camera->GetFocalPoint()[1] << "," << camera->GetFocalPoint()[2] << std::endl;
-    std::cout << "Dst: " << camera->GetDistance() << std::endl;
-    std::cout << "Ang: " << camera->GetViewAngle() << std::endl;
-}
 
 int main(int argc, char* argv[])
 {
-    // these could be command line arguments:
-    //const std::string VTI_PATH = "/media/maxpio/data/eval/azba/azba.hdf5";
-    const std::string VTI_PATH = "/media/maxpio/data/eval/xtm-battery/xtm-battery.hdf5";
-    //const std::string VTI_PATH = "/media/maxpio/data/eval/cells/output_cells-00055.vti";
-
-    //const std::string VCFG_PATH = "/home/maxpio/code/volcanite/eval/config/azba.vcfg";
-    const std::string VCFG_PATH = "/home/maxpio/code/volcanite/eval/config/xtm-battery.vcfg";
-    constexpr int FRAMES = 300;
-    constexpr bool OFFSCREEN = false;
-
     // SETUP -----------------------------------------------------------------------------------------------------------
 
-    // load config file
-    VolcaniteParameters params = VcfgSegVolTFFileReader::readParameterFile(VCFG_PATH);
+    // disable vsync
+    setenv("__GL_SYNC_TO_VBLANK", "0", 1);
 
-    // merge all visible intervals
+    // use GPU ray casting for volume rendering
+    vtkSmartPointer<vtkOpenGLGPUVolumeRayCastMapper> volumeMapper = vtkSmartPointer<vtkOpenGLGPUVolumeRayCastMapper>::New();
+
+    // load Volcanite config file to import which labels are visible:
+    // merge all visible material transfer function intervals
+    VolcaniteParameters params = VcfgSegVolTFFileReader::readParameterFile(VCFG_PATH);
     std::vector<Interval> intervals;
-    std::cout << "Segmentation Volume Transfer Function. Visible intervals:" << std::endl;
     for (const auto& m : params.materials) {
         if (m.discrAttribute != SegmentedVolumeMaterial::DISCR_NONE) {
-            // std::cout << "[" << m.discrInterval[0] << "," << m.discrInterval[1] << "]" << std::endl;
             intervals.emplace_back(m.discrInterval[0], m.discrInterval[1]);
         }
     }
     intervals = mergeIntervals(intervals);
-    // std::cout << "Merged intervals:" << std::endl;
-    // for (const auto& i : intervals) {
-    //         std::cout << "[" << i.start << "," << i.end << "]" << std::endl;
-    // }
+    if (VERBOSE)
+    {
+        std::cout << "Merged transfer function intervals:" << std::endl;
+        for (const auto& i : intervals) {
+            std::cout << "  [" << i.start << "," << i.end << "]" << std::endl;
+        }
+    }
 
 
-
-    // load volume from disk an provide as VolumeMapper
-    vtkSmartPointer<vtkGPUVolumeRayCastMapper> volumeMapper = vtkSmartPointer<vtkGPUVolumeRayCastMapper>::New();
-
-    // min/max volume labels
+    // load volume from disk, compute min/max volume labels, and assign to VolumeMapper
     uint32_t label_min = UINT32_MAX, label_max = 0u;
-
     if (VTI_PATH.ends_with(".vti")) {
         vtkSmartPointer<vtkXMLImageDataReader> reader = vtkSmartPointer<vtkXMLImageDataReader>::New();
         reader->SetFileName(VTI_PATH.c_str());
@@ -180,25 +101,20 @@ int main(int argc, char* argv[])
         label_min = static_cast<uint32_t>(range[0]);
         label_max = static_cast<uint32_t>(range[1]);
     }
+    if (VERBOSE)
+        std::cout << "volume labels: [" << label_min << "," << label_max << "]" << std::endl;
 
-    std::cout << "labels: [" << label_min << "," << label_max << "]" << std::endl;
 
-
-    // ------------------------
-
-    // Step 2: Set up color and opacity transfer functions
+    // Set up vtk color and opacity transfer functions
     vtkSmartPointer<vtkColorTransferFunction> colorTF = vtkSmartPointer<vtkColorTransferFunction>::New();
     for (unsigned int x = 0; x < 256; x++)
         colorTF->AddHSVPoint(static_cast<double>(x), static_cast<double>((std::hash<unsigned int>{}(x) >> 2u) % 256u) / 255., 1.f, 1.f);
-
-    vtkSmartPointer<vtkPiecewiseFunction> opacityTF = vtkSmartPointer<vtkPiecewiseFunction>::New();
-
     // fill the opacity TF from the materials opacity vector
+    vtkSmartPointer<vtkPiecewiseFunction> opacityTF = vtkSmartPointer<vtkPiecewiseFunction>::New();
     constexpr int TF_SIZE = (1 << 16) - 1;
     opacityTF->AddPoint(0., 0.0);
     opacityTF->AddPoint(TF_SIZE, 0.0);
     for (const auto& i : intervals) {
-
         double start = static_cast<double>(i.start - label_min) / static_cast<double>(label_max - label_min);
         double end = static_cast<double>(i.end + 1 - label_min) / static_cast<double>(label_max - label_min);
 
@@ -207,148 +123,163 @@ int main(int argc, char* argv[])
         opacityTF->AddPoint(static_cast<int>(std::round(end * TF_SIZE)), VTK_FLOAT_MAX);
         opacityTF->AddPoint(static_cast<int>(std::round(end * TF_SIZE)), 0.);
 
-        std::cout << "[" << start << "," << end << "] ";
+        if (VERBOSE)
+            std::cout << "Interval [" << start << "," << end << "] " << std::endl;
     }
-    std::cout << std::endl;
 
-    // Step 3: Set up the volume property
+    // Set up the volume property
     vtkSmartPointer<vtkVolumeProperty> volumeProperty = vtkSmartPointer<vtkVolumeProperty>::New();
     volumeProperty->SetColor(colorTF);
     volumeProperty->SetScalarOpacity(opacityTF);
-    volumeProperty->SetInterpolationTypeToNearest();
-    volumeProperty->ShadeOn();
+    volumeProperty->SetInterpolationTypeToNearest();    // no interpolation for segmentation volume labels
 
-    // Step 5: Set up the volume
+    // Set up the volume
     vtkSmartPointer<vtkVolume> volume = vtkSmartPointer<vtkVolume>::New();
-
     volume->SetMapper(volumeMapper);
     volume->SetProperty(volumeProperty);
 
-    // Step 6: Set up renderer and render window with offscreen rendering
+    // Set up renderer and render window with offscreen rendering
     vtkSmartPointer<vtkRenderer> renderer = vtkSmartPointer<vtkRenderer>::New();
     renderer->AddVolume(volume);
-    renderer->SetBackground(0., 0., 0.);
-    //renderer->SetBackground(1., 1., 1.);
-    renderer->SetUseShadows(false);
-
+    renderer->SetBackground(1., 1., 1.);
+    // GlobalIllumination apparently has no effect on the vtkGPURayCastMapper
+    // volumeMapper->SetGlobalIlluminationReach(1.f);
+    volumeProperty->SetShade(true);
+    //
     vtkSmartPointer<vtkRenderWindow> renderWindow = vtkSmartPointer<vtkRenderWindow>::New();
     renderWindow->AddRenderer(renderer);
     renderWindow->SetSize(1920, 1080);
 
-    // Step 7: Set up the camera and volume transformations.
-    // * Longest axis of volume has length 1 in world space.
-    // * Volume is centered around the origin.
-    // * Camera uses the parameters from the configuration.
+    auto& vcnt_camera = params.camera;
+    auto vtk_camera = renderer->GetActiveCamera();
+
+    // Set up the camera and volume transformations.
     {
         constexpr double world_space_scale = 1.;
+
+        // Calculate size of volume axes
         double bounds[6];
         volume->GetBounds(bounds);
+        int maxDim = 0;
+        for (int i = 1; i < 3; i++)
+            if (bounds[i*2 + 1] - bounds[i*2] > maxDim)
+                maxDim = i;
+        double maxSize = bounds[maxDim*2 + 1] - bounds[maxDim*2];
 
-        std::cout << "x: " << bounds[0] << " - " << bounds[1] << ", ";
-        std::cout << "y: " << bounds[2] << " - " << bounds[3] << "; ";
-        std::cout << "z: " << bounds[4] << " - " << bounds[5] << std::endl;
-
-        // TODO: check if configuration has clipping planes set -> reduce bounds
-
-        // Calculate size of axes
-        double sizeX = bounds[1] - bounds[0];
-        double sizeY = bounds[3] - bounds[2];
-        double sizeZ = bounds[5] - bounds[4];
-
-        double maxSize = std::max({sizeX, sizeY, sizeZ});
-        double scaleFactor = world_space_scale / maxSize;
-
-        std::cout << "maxSize: " << maxSize << std::endl;
-
-        // Center of the volume
+        // Compute center of the volume
         double centerX = world_space_scale * (bounds[1] + bounds[0]) / 2.0;
         double centerY = world_space_scale * (bounds[3] + bounds[2]) / 2.0;
         double centerZ = world_space_scale * (bounds[5] + bounds[4]) / 2.0;
 
-        // Create transform
+        // Create volume transformations to center the volume around the Volcanite camera lookat / origin.
         vtkSmartPointer<vtkTransform> volumeTransform = vtkSmartPointer<vtkTransform>::New();
-        // center
-        // (no scaling: Volcanite world space, the larges volume axis has length 1.
-        //  In VTK, we use the default size - 1 voxel = length 1 - and scale the camera distance to prevent bugs.)
-        // transform axes
         vtkSmartPointer<vtkMatrix4x4> axisMat = vtkSmartPointer<vtkMatrix4x4>::New();
-        std::cout << "Axes: " << params.axis_order.x * (params.axis_flip.x ? -1. : 1.) << params.axis_order.y * (params.axis_flip.y ? -1. : 1.) << params.axis_order.z * (params.axis_flip.z ? -1. : 1.) << std::endl;
         for (int a = 0; a < 3; a++) {
             axisMat->SetElement(0, a, 0.);
             axisMat->SetElement(1, a, 0.);
             axisMat->SetElement(2, a, 0.);
-            // // flip Y
-            // if (params.axis_order[a] == 1)
-            //     axisMat->SetElement(params.axis_order[a], a, params.axis_flip[a] ? 1. : -1.);
-            // else
             axisMat->SetElement(params.axis_order[a], a, params.axis_flip[a] ? -1. : 1.);
         }
-        // axisMat->SetElement(0, 0, 1.f);
-        // axisMat->SetElement(1, 2, 1.f);
-        // axisMat->SetElement(2, 1, 1.f);
-        //axisMat->Invert();
-        //volumeTransform->Scale(scaleFactor, scaleFactor, scaleFactor);
+        // Using no scaling: in Volcanite, volumes are scaled so that larges axis has length 1 in world space.
+        // The vtkGPUVolumeRayCaster cannot handle volumes with such a small world space size, producing empty images.
+        // In VTK, we therefore use the default size (1 voxel = world space length 1) and scale camera distances.
+        // double scaleFactor = world_space_scale / maxSize;
+        // volumeTransform->Scale(scaleFactor, scaleFactor, scaleFactor);
         volumeTransform->Translate(-centerX, -centerY, -centerZ);
-        // volumeTransform->Concatenate(axisMat);
-
-        //transform->Translate(-camera.position_look_at_world_space.x * maxSize, -camera.position_look_at_world_space.z * maxSize, -camera.position_look_at_world_space.y * maxSize);
+        volumeTransform->Concatenate(axisMat);
+        volumeTransform->Translate(-vcnt_camera.position_look_at_world_space.x * maxSize, -vcnt_camera.position_look_at_world_space.y * maxSize, -vcnt_camera.position_look_at_world_space.z * maxSize);
         volume->SetUserTransform(volumeTransform);
 
-        // Camera
-        auto& camera = params.camera;
-        auto vtk_camera = renderer->GetActiveCamera();
+        // Set up camera
+        {
+            // TODO: clean up the camera configurations here
 
-        vtk_camera->SetPosition(camera.get_position().x * maxSize * camera.orbital_radius, camera.get_position().y * maxSize * camera.orbital_radius, camera.get_position().z * maxSize * camera.orbital_radius);
-        double up[3] = {camera.get_up_vector().x, camera.get_up_vector().y, camera.get_up_vector().z};
-        vtk_camera->SetViewUp(up);
-        //vtk_camera->SetDistance(camera.orbital_radius);
-        vtk_camera->SetFocalPoint(0, 0, 0);
+            //vtk_camera->SetPosition(camera.get_position().x, camera.get_position().y, camera.get_position().z);
+            vtk_camera->SetPosition(vcnt_camera.get_position().x * maxSize, vcnt_camera.get_position().y * maxSize, vcnt_camera.get_position().z * maxSize);
+            double cam_up[3] = {vcnt_camera.get_up_vector().x, vcnt_camera.get_up_vector().y, vcnt_camera.get_up_vector().z};
+            vtk_camera->SetViewUp(cam_up);
+            vtk_camera->SetFocalPoint(0, 0, 0);
 
-        //  vtkSmartPointer<vtkMatrix4x4> projMat = vtkSmartPointer<vtkMatrix4x4>::New();
-        //  for (int x = 0; x < 4; x++)
-        //      for (int y = 0; y < 4; y++)
-        //          projMat->SetElement(x, y, params.camera.get_view_to_projection_space(1920./1080.)[y][x]);
-        // vtk_camera->SetExplicitProjectionTransformMatrix(projMat);
-        // vtk_camera->SetUseExplicitProjectionTransformMatrix(true);
-        vtk_camera->SetViewAngle(60); //
+            // use Volcanite projection matrix
+             vtkSmartPointer<vtkMatrix4x4> projMat = vtkSmartPointer<vtkMatrix4x4>::New();
+             for (int x = 0; x < 4; x++)
+                 for (int y = 0; y < 4; y++)
+                     projMat->SetElement(x, y, params.camera.get_view_to_projection_space(1920./1080.)[y][x]);
+            projMat->SetElement(1, 1, projMat->GetElement(1, 1) * -1.);
+            vtk_camera->SetExplicitProjectionTransformMatrix(projMat);
+            vtk_camera->SetUseExplicitProjectionTransformMatrix(true);
+            vtk_camera->SetViewAngle(60);
 
-        // vtkSmartPointer<vtkMatrix4x4> viewMat = vtkSmartPointer<vtkMatrix4x4>::New();
-        // for (int x = 0; x < 4; x++)
-        //     for (int y = 0; y < 4; y++)
-        //         viewMat->SetElement(x, y, params.camera.get_world_to_view_space()[y][x]);
+            // vtkSmartPointer<vtkMatrix4x4> viewMat = vtkSmartPointer<vtkMatrix4x4>::New();
+            // for (int x = 0; x < 4; x++)
+            //     for (int y = 0; y < 4; y++)
+            //         viewMat->SetElement(x, y, params.camera.get_world_to_view_space()[y][x]);
 
 
-        // vtkSmartPointer<vtkTransform> cameraTransform = vtkSmartPointer<vtkTransform>::New();
-        // // model to world
-        // cameraTransform->Concatenate(axisMat);
-        // //cameraTransform->Scale(1./scaleFactor, 1./scaleFactor, 1./scaleFactor);
-        // cameraTransform->Translate(-centerX, -centerY, -centerZ);
-        // cameraTransform->Inverse();
-        // // world to view
-        //cameraTransform->Concatenate(viewMat);
-        // vtk_camera->ApplyTransform(cameraTransform);
-        // //vtk_camera->SetClippingRange(camera.near, camera.far);
-        // vtk_camera->SetViewAngle(camera.vertical_fov / (2.f * M_PI) * 360.f);
+            // vtkSmartPointer<vtkTransform> cameraTransform = vtkSmartPointer<vtkTransform>::New();
+            // // model to world
+            // cameraTransform->Concatenate(axisMat);
+            // //cameraTransform->Scale(1./scaleFactor, 1./scaleFactor, 1./scaleFactor);
+            // cameraTransform->Translate(-centerX, -centerY, -centerZ);
+            // cameraTransform->Inverse();
+            // // world to view
+            //cameraTransform->Concatenate(viewMat);
+            // vtk_camera->ApplyTransform(cameraTransform);
+            // //vtk_camera->SetClippingRange(camera.near, camera.far);
+            vtk_camera->SetViewAngle(vcnt_camera.vertical_fov / (2.f * M_PI) * 360.f);
+            //vtk_camera->SetClippingRange(camera.near, camera.far);
 
+            // if (CAMERA_PATH.empty()) {
+            //     // load previously exported camera (if applicable)
+            //     LoadCameraFromFile(vtk_camera, CAMERA_PATH);
+            // }
+        }
+
+
+        // update volume bounds after transformation
         volume->GetBounds(bounds);
-        std::cout << "x: " << bounds[0] << " - " << bounds[1] << ", ";
-        std::cout << "y: " << bounds[2] << " - " << bounds[3] << ", ";
-        std::cout << "z: " << bounds[4] << " - " << bounds[5] << std::endl;
 
+        // Create cube axes (not when evaluating)
+        if (!OFFSCREEN)
+        {
+            vtkNew<vtkCubeAxesActor> cubeAxes;
+            cubeAxes->SetBounds(bounds);
+            cubeAxes->SetCamera(renderer->GetActiveCamera());
+            cubeAxes->DrawXGridlinesOn();
+            cubeAxes->DrawYGridlinesOn();
+            cubeAxes->DrawZGridlinesOn();
+            // cubeAxes->GetXAxesLinesProperty()->SetColor(0.0, 0.0, 0.0);
+            // cubeAxes->GetYAxesLinesProperty()->SetColor(0.0, 0.0, 0.0);
+            // cubeAxes->GetZAxesLinesProperty()->SetColor(0.0, 0.0, 0.0);
+            cubeAxes->SetGridLineLocation(1);       // 0 = edges, 1 = faces
+            renderer->AddActor(cubeAxes);
+        }
+
+        // update clipping and cropping planes
+        // volumeMapper->SetSampleDistance(static_cast<float>((bounds[maxDim * 2 + 1] - bounds[maxDim * 2]) / maxSize));
+        volumeMapper->SetSampleDistance(0.5);       // approx. half a voxel size
+        volumeMapper->SetCroppingRegionPlanes(bounds);
+        volumeMapper->Update();
         renderer->ResetCameraClippingRange();
 
-        // Create cube axes
-        vtkNew<vtkCubeAxesActor> cubeAxes;
-        cubeAxes->SetBounds(bounds);
-        cubeAxes->SetCamera(renderer->GetActiveCamera());
-        cubeAxes->DrawXGridlinesOn();
-        cubeAxes->DrawYGridlinesOn();
-        cubeAxes->DrawZGridlinesOn();
-        cubeAxes->SetGridLineLocation(1); // 0 = edges, 1 = faces
 
-        renderer->AddActor(cubeAxes);
+        // TODO: remove debugging of vtk projection matrix here
+        // double clippingRange[2];
+        // vtk_camera->GetClippingRange(clippingRange);
+        // for (int y = 0; y < 4; y++)
+        // {
+        //     for (int x = 0; x < 4; x++)
+        //         std::cout << vtk_camera->GetProjectionTransformMatrix(1920./1080, clippingRange[0], clippingRange[1])->GetElement(x, y) << ",";
+        //     std::cout << std::endl;
+        // }
+        // std::cout << "---- VOLCANITE: ------" << std::endl;
+        // for (int y = 0; y < 4; y++)
+        // {
+        //     for (int x = 0; x < 4; x++)
+        //         std::cout << params.camera.get_view_to_projection_space(1920./1080)[y][x] << ",";
+        //     std::cout << std::endl;
+        // }
     }
-
 
 
 
@@ -357,18 +288,52 @@ int main(int argc, char* argv[])
     if (OFFSCREEN)
     {
         renderWindow->OffScreenRenderingOn();
+        renderWindow->MakeCurrent();  // Ensure context is current
 
-
-        // Step 7: Render and measure time (CPU side)
+        // Render a single frame to trigger volume uploading to the GPU (should not be measured)
         renderWindow->Render();
-        double cpuRenderTime = renderer->GetLastRenderTimeInSeconds();
+        renderer->GetLastRenderTimeInSeconds();
+        // Render and measure frame times (CPU side)
+        std::array<double, FRAMES> cpuRenderTimes{};
         for (int i = 0; i < FRAMES; ++i)
         {
             renderWindow->Render();
-            cpuRenderTime += renderer->GetLastRenderTimeInSeconds();
+            cpuRenderTimes[i] = renderer->GetLastRenderTimeInSeconds();
         }
 
-        std::cout << "Render time [ms/frame]: " << (cpuRenderTime * 1000. / FRAMES) << std::endl;
+
+        // compute timing aggregates, print timings
+        std::cout << "Render time [ms/frame]: " << std::endl;
+        std::cout << "  fst: ";
+        double min = 99999999999.f;
+        double max = 0.f;
+        double avg = 0.f;
+        double var = 0.f;
+        //
+        for (int i = 0; i < FRAMES; ++i)
+        {
+            // convert to [ms]
+            cpuRenderTimes.at(i) *= 1000.;
+
+            if (i < 16)
+                std::cout << cpuRenderTimes.at(i) << " ";
+
+            // tracking variables
+            if (cpuRenderTimes.at(i) < min)
+                min = cpuRenderTimes.at(i);
+            if (cpuRenderTimes.at(i) > max)
+                max = cpuRenderTimes.at(i);
+            avg += cpuRenderTimes.at(i);
+            var += cpuRenderTimes.at(i) * cpuRenderTimes.at(i);
+        }
+        avg /= FRAMES;
+        var = var/FRAMES - (avg * avg);
+        //
+        std::cout << std::endl;
+        std::cout << "  min: " << min << std::endl;
+        std::cout << "  avg: " << avg << std::endl;
+        std::cout << "  sdv: " << std::sqrt(var) << std::endl;
+        std::cout << "  max: " << max << std::endl;
 
         save_image(renderWindow);
     }
@@ -378,8 +343,8 @@ int main(int argc, char* argv[])
         vtkNew<vtkRenderWindowInteractor> interactor;
         interactor->SetRenderWindow(renderWindow);
         interactor->Start();
-    }
 
-    printCameraInfo(renderer->GetActiveCamera());
+        SaveCameraToFile(vtk_camera, CAMERA_EXPORT_PATH);
+    }
     return 0;
 }

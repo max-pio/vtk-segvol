@@ -186,8 +186,6 @@ public:
             std::cout << "Could not open parameter file " << path << std::endl;
         }
 
-        std::cout << "    axis order: " << params.axis_order.x << ", " << params.axis_order.y << ", " << params.axis_order.z << std::endl;
-        std::cout << "    axis flip: " << params.axis_flip.x << ", " << params.axis_flip.y << ", " << params.axis_flip.z << std::endl;
         return params;
     }
 

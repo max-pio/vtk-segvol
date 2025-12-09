@@ -143,10 +143,11 @@ int main(int argc, char* argv[])
     // Set up renderer and render window with offscreen rendering
     vtkSmartPointer<vtkRenderer> renderer = vtkSmartPointer<vtkRenderer>::New();
     renderer->AddVolume(volume);
-    renderer->SetBackground(0.5, 0.5, 0.5);
+    renderer->SetBackground(1., 1., 1.);
     // GlobalIllumination apparently has no effect on the vtkGPURayCastMapper
-    // volumeMapper->SetGlobalIlluminationReach(1.f);
+    // volumeMapper->SetGlobalIlluminationReach(maxSize);
     volumeProperty->SetShade(true);
+    volumeProperty->SetAmbient(0.3);
     //
     vtkSmartPointer<vtkRenderWindow> renderWindow = vtkSmartPointer<vtkRenderWindow>::New();
     renderWindow->AddRenderer(renderer);

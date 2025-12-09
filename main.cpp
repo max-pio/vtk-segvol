@@ -159,19 +159,19 @@ int main(int argc, char* argv[])
     {
         constexpr double world_space_scale = 1.;
 
-        // Calculate size of volume axes
-        double bounds[6];
-        volume->GetBounds(bounds);
+        // Calculate size of "raw" volume axes
+        double raw_bounds[6];
+        volume->GetBounds(raw_bounds);
         int maxDim = 0;
         for (int i = 1; i < 3; i++)
-            if ((bounds[i*2 + 1] - bounds[i*2]) > (bounds[maxDim*2 + 1] - bounds[maxDim*2]))
+            if ((raw_bounds[i*2 + 1] - raw_bounds[i*2]) > (raw_bounds[maxDim*2 + 1] - raw_bounds[maxDim*2]))
                 maxDim = i;
-        double maxSize = bounds[maxDim*2 + 1] - bounds[maxDim*2];
+        double maxSize = raw_bounds[maxDim*2 + 1] - raw_bounds[maxDim*2];
 
         // Compute center of the volume
-        double centerX = world_space_scale * (bounds[1] + bounds[0]) / 2.0;
-        double centerY = world_space_scale * (bounds[3] + bounds[2]) / 2.0;
-        double centerZ = world_space_scale * (bounds[5] + bounds[4]) / 2.0;
+        double centerX = world_space_scale * (raw_bounds[1] + raw_bounds[0]) / 2.0;
+        double centerY = world_space_scale * (raw_bounds[3] + raw_bounds[2]) / 2.0;
+        double centerZ = world_space_scale * (raw_bounds[5] + raw_bounds[4]) / 2.0;
 
         // Create volume transformations to center the volume around the Volcanite camera lookat / origin.
         vtkSmartPointer<vtkTransform> volumeTransform = vtkSmartPointer<vtkTransform>::New();
@@ -238,13 +238,30 @@ int main(int argc, char* argv[])
             }
         }
 
-
-        // update volume bounds after transformation
-        volume->GetBounds(bounds);
+        // adapt volume bounds to match Volcanite split planes:
+        // note: these are in "raw" volume bound space, without the volume transform (translation) applied
+        double clipped_bounds[6];
+        clipped_bounds[0] = glm::max(raw_bounds[0], static_cast<double>(params.split_plane_x[0]));
+        clipped_bounds[1] = glm::min(raw_bounds[1], static_cast<double>(params.split_plane_x[1]));
+        clipped_bounds[2] = glm::max(raw_bounds[2], static_cast<double>(params.split_plane_y[0]));
+        clipped_bounds[3] = glm::min(raw_bounds[3], static_cast<double>(params.split_plane_y[1]));
+        clipped_bounds[4] = glm::max(raw_bounds[4], static_cast<double>(params.split_plane_z[0]));
+        clipped_bounds[5] = glm::min(raw_bounds[5], static_cast<double>(params.split_plane_z[1]));
+        volumeMapper->SetCropping(true);
+        volumeMapper->SetCroppingRegionPlanes(clipped_bounds);
+        // volumeMapper->SetSampleDistance(static_cast<float>((bounds[maxDim * 2 + 1] - bounds[maxDim * 2]) / maxSize));
+        volumeMapper->SetSampleDistance(0.5);
+        volumeMapper->Update();
+        // update camera clipping ranges
+        renderer->ResetCameraClippingRange();
 
         // Create cube axes (not when evaluating)
         if (!OFFSCREEN)
         {
+            // get volume bounds after all transformations
+            // note: clipping of the volume mapper is not considered here
+            double bounds[6];
+            volume->GetBounds(bounds);
             vtkNew<vtkCubeAxesActor> cubeAxes;
             cubeAxes->SetBounds(bounds);
             cubeAxes->SetCamera(renderer->GetActiveCamera());
@@ -257,34 +274,6 @@ int main(int argc, char* argv[])
             cubeAxes->SetGridLineLocation(1);       // 0 = edges, 1 = faces
             renderer->AddActor(cubeAxes);
         }
-
-        // update clipping and cropping planes
-        // volumeMapper->SetSampleDistance(static_cast<float>((bounds[maxDim * 2 + 1] - bounds[maxDim * 2]) / maxSize));
-        volumeMapper->SetSampleDistance(0.5);       // approx. half a voxel size
-        std::cout << "VTK: " << std::endl;
-        std::cout << bounds[0] << " - " << bounds[1] << std::endl;
-        std::cout << bounds[2] << " - " << bounds[3] << std::endl;
-        std::cout << bounds[4] << " - " << bounds[5] << std::endl;
-        std::cout << "center " << centerX << ", " << centerY << ", " << centerZ << std::endl;
-        std::cout << "Volcanite: " << std::endl;
-        std::cout << params.split_plane_x[0] << " - " << params.split_plane_x[1] << std::endl;
-        std::cout << params.split_plane_y[0] << " - " << params.split_plane_y[1] << std::endl;
-        std::cout << params.split_plane_z[0] << " - " << params.split_plane_z[1] << std::endl;
-        // adapt bounds to match Volcanite split planes:
-        bounds[0] = params.split_plane_x[0];
-        bounds[1] = params.split_plane_x[1];
-        bounds[2] = params.split_plane_y[0];
-        bounds[3] = params.split_plane_y[1];
-        bounds[4] = params.split_plane_z[0];
-        bounds[5] = params.split_plane_z[1];
-        std::cout << "VTK: " << std::endl;
-        std::cout << bounds[0] << " - " << bounds[1] << std::endl;
-        std::cout << bounds[2] << " - " << bounds[3] << std::endl;
-        std::cout << bounds[4] << " - " << bounds[5] << std::endl;
-        volumeMapper->SetCropping(true);
-        volumeMapper->SetCroppingRegionPlanes(bounds);
-        volumeMapper->Update();
-        renderer->ResetCameraClippingRange();
 
         // TODO: remove debugging of vtk projection matrix here
         // double clippingRange[2];

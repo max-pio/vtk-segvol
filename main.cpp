@@ -26,18 +26,18 @@
 // these could be command line arguments:
 const std::string CAMERA_PATH = "";
 
-// const std::string VTI_PATH = "/media/maxpio/data/eval/azba/azba.hdf5";
-// const std::string VCFG_PATH = "/home/maxpio/code/volcanite/eval/config/azba.vcfg";
+const std::string VTI_PATH = "/media/maxpio/data/eval/azba/azba.hdf5";
+const std::string VCFG_PATH = "/home/maxpio/code/volcanite/eval/config/azba.vcfg";
 //const std::string CAMERA_PATH = "./azba.cam";
 
-const std::string VTI_PATH = "/media/maxpio/data/eval/xtm-battery/xtm-battery.hdf5";
-const std::string VCFG_PATH = "/home/maxpio/code/volcanite/eval/config/xtm-battery.vcfg";
+// const std::string VTI_PATH = "/media/maxpio/data/eval/xtm-battery/xtm-battery.hdf5";
+// const std::string VCFG_PATH = "/home/maxpio/code/volcanite/eval/config/xtm-battery.vcfg";
 //const std::string CAMERA_PATH = "./azba.cam";
 
 // TODO: add other data sets, including Cells
 // TODO: make data sets command line arguments, call the binary from a bash / python script
 
-constexpr bool VERBOSE = false;
+constexpr bool VERBOSE = true;
 constexpr int FRAMES = 300;
 constexpr bool OFFSCREEN = false;
 const std::string CAMERA_EXPORT_PATH = "./camera.cam";
@@ -188,8 +188,8 @@ int main(int argc, char* argv[])
         // In VTK, we therefore use the default size (1 voxel = world space length 1) and scale camera distances.
         //double scaleFactor = world_space_scale / maxSize;
         //volumeTransform->Scale(scaleFactor, scaleFactor, scaleFactor);
-        volumeTransform->Translate(-centerX, -centerY, -centerZ);
         volumeTransform->Concatenate(axisMat);
+        volumeTransform->Translate(-centerX, -centerY, -centerZ);
         //volumeTransform->Translate(-vcnt_camera.position_look_at_world_space.x * maxSize, -vcnt_camera.position_look_at_world_space.y * maxSize, -vcnt_camera.position_look_at_world_space.z * maxSize);
         volume->SetUserTransform(volumeTransform);
 
@@ -202,7 +202,9 @@ int main(int argc, char* argv[])
             double cam_up[3] = {vcnt_camera.get_up_vector().x, vcnt_camera.get_up_vector().y, vcnt_camera.get_up_vector().z};
             vtk_camera->SetViewUp(cam_up);
             //vtk_camera->SetFocalPoint(0, 0, 0);
-            vtk_camera->SetFocalPoint(vcnt_camera.position_look_at_world_space.x * maxSize, vcnt_camera.position_look_at_world_space.y * maxSize, vcnt_camera.position_look_at_world_space.z * maxSize);
+            vtk_camera->SetFocalPoint(vcnt_camera.position_look_at_world_space.x * maxSize,
+                                      vcnt_camera.position_look_at_world_space.y * maxSize,
+                                      vcnt_camera.position_look_at_world_space.z * maxSize);
 
             // use Volcanite projection matrix
              vtkSmartPointer<vtkMatrix4x4> projMat = vtkSmartPointer<vtkMatrix4x4>::New();
@@ -256,7 +258,23 @@ int main(int argc, char* argv[])
         // update camera clipping ranges
         renderer->ResetCameraClippingRange();
 
-        // Create cube axes (not when evaluating)
+        if (VERBOSE)
+        {
+            std::cout << "Clipped Bounds: " << std::endl;
+            std::cout << "  " << clipped_bounds[0] << ", " << clipped_bounds[1] << std::endl;
+            std::cout << "  " << clipped_bounds[2] << ", " << clipped_bounds[3] << std::endl;
+            std::cout << "  " << clipped_bounds[4] << ", " << clipped_bounds[5] << std::endl;
+
+            std::cout << "Raw Bounds: " << std::endl;
+            std::cout << "  " << raw_bounds[0] << ", " << raw_bounds[1] << std::endl;
+            std::cout << "  " << raw_bounds[2] << ", " << raw_bounds[3] << std::endl;
+            std::cout << "  " << raw_bounds[4] << ", " << raw_bounds[5] << std::endl;
+
+            std::cout << "Center: " << std::endl;
+            std::cout << "  " << centerX << ", " << centerY << ", " << centerZ << std::endl;
+        }
+
+        // Display info (not when evaluating): create cube axes and transfer function overlay image
         if (!OFFSCREEN)
         {
             // get volume bounds after all transformations
@@ -274,6 +292,8 @@ int main(int argc, char* argv[])
             // cubeAxes->GetZAxesLinesProperty()->SetColor(0.0, 0.0, 0.0);
             cubeAxes->SetGridLineLocation(1);       // 0 = edges, 1 = faces
             renderer->AddActor(cubeAxes);
+
+            // TODO: add transfer function image overlay
         }
 
         // TODO: remove debugging of vtk projection matrix here
@@ -364,7 +384,7 @@ int main(int argc, char* argv[])
         SaveCameraToFile(vtk_camera, CAMERA_EXPORT_PATH);
         if (VERBOSE)
         {
-            std::cout << "Shutdown camear:" << std::endl;
+            std::cout << "Shutdown camera:" << std::endl;
             printCameraInfo(renderer->GetActiveCamera());
         }
     }

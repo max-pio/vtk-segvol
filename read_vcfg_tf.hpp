@@ -30,21 +30,24 @@ struct VolcaniteParameters {
     std::vector<SegmentedVolumeMaterial> materials;
     glm::ivec3 axis_order; ///< permutation of 012 (xyz) axes
     glm::bvec3 axis_flip;
+    glm::ivec2 split_plane_x;
+    glm::ivec2 split_plane_y;
+    glm::ivec2 split_plane_z;
 };
 
 class VcfgSegVolTFFileReader {
 
 private:
 
-    static bool readParameter(const std::string &parameter_label, std::istream &parameter_stream, std::vector<SegmentedVolumeMaterial>& mats, glm::ivec3& axis_order, glm::bvec3& axis_flip) {
+    static bool readParameter(const std::string &parameter_label, std::istream &parameter_stream, VolcaniteParameters& params) {
         // check if this element list contains a parameter of the given label_name
         if (parameter_label == "Materials:") {
             size_t matCount;
             parameter_stream >> matCount;
-            mats.resize(matCount);
+            params.materials.resize(matCount);
 
             for (int m = 0; m < matCount; m++) {
-                auto& mat = mats[m];
+                auto& mat = params.materials[m];
 
                 std::string name;
                 parameter_stream >> name;
@@ -91,25 +94,37 @@ private:
         } else if (parameter_label == "Axis_Order:") {
             std::string tmp;
             parameter_stream >> tmp;
-            axis_order = {~0u,~0u,~0u};
-            axis_order[static_cast<int>(tmp.find('X'))] = 0;
-            axis_order[static_cast<int>(tmp.find('Y'))] = 1;
-            axis_order[static_cast<int>(tmp.find('Z'))] = 2;
+            params.axis_order = {~0u,~0u,~0u};
+            params.axis_order[static_cast<int>(tmp.find('X'))] = 0;
+            params.axis_order[static_cast<int>(tmp.find('Y'))] = 1;
+            params.axis_order[static_cast<int>(tmp.find('Z'))] = 2;
             return true;
         } else if (parameter_label == "X_Axis:") {
             int i;
             parameter_stream >> i;
-            axis_flip.x = i;
+            params.axis_flip.x = i;
             return true;
         } else if (parameter_label == "Y_Axis:") {
             int i;
             parameter_stream >> i;
-            axis_flip.y = i;
+            params.axis_flip.y = i;
             return true;
         } else if (parameter_label == "Z_Axis:") {
             int i;
             parameter_stream >> i;
-            axis_flip.z = i;
+            params.axis_flip.z = i;
+            return true;
+        } else if (parameter_label == "Splitting_Plane_X:") {
+            parameter_stream >> params.split_plane_x[0];
+            parameter_stream >> params.split_plane_x[1];
+            return true;
+        } else if (parameter_label == "Splitting_Plane_Y:") {
+            parameter_stream >> params.split_plane_y[0];
+            parameter_stream >> params.split_plane_y[1];
+            return true;
+        } else if (parameter_label == "Splitting_Plane_Z:") {
+            parameter_stream >> params.split_plane_z[0];
+            parameter_stream >> params.split_plane_z[1];
             return true;
         } else {
             // parameter was not consumed
@@ -146,7 +161,7 @@ private:
             parameter_stream >> parameter_label;
 
             // consumed:
-            if (readParameter(parameter_label, parameter_stream, params.materials, params.axis_order, params.axis_flip))
+            if (readParameter(parameter_label, parameter_stream, params))
                 continue;
 
             if ((!parameter_stream.eof() && parameter_stream.fail()) || (!in.eof() && in.fail())) {

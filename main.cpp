@@ -24,12 +24,14 @@
 #include "util.hpp"
 
 // these could be command line arguments:
-const std::string VTI_PATH = "/media/maxpio/data/eval/azba/azba.hdf5";
-const std::string VCFG_PATH = "/home/maxpio/code/volcanite/eval/config/azba.vcfg";
-const std::string CAMERA_PATH = "./azba.cam";
+const std::string CAMERA_PATH = "";
 
-//const std::string VTI_PATH = "/media/maxpio/data/eval/xtm-battery/xtm-battery.hdf5";
-//const std::string VCFG_PATH = "/home/maxpio/code/volcanite/eval/config/xtm-battery.vcfg";
+// const std::string VTI_PATH = "/media/maxpio/data/eval/azba/azba.hdf5";
+// const std::string VCFG_PATH = "/home/maxpio/code/volcanite/eval/config/azba.vcfg";
+//const std::string CAMERA_PATH = "./azba.cam";
+
+const std::string VTI_PATH = "/media/maxpio/data/eval/xtm-battery/xtm-battery.hdf5";
+const std::string VCFG_PATH = "/home/maxpio/code/volcanite/eval/config/xtm-battery.vcfg";
 //const std::string CAMERA_PATH = "./azba.cam";
 
 // TODO: add other data sets, including Cells
@@ -141,7 +143,7 @@ int main(int argc, char* argv[])
     // Set up renderer and render window with offscreen rendering
     vtkSmartPointer<vtkRenderer> renderer = vtkSmartPointer<vtkRenderer>::New();
     renderer->AddVolume(volume);
-    renderer->SetBackground(1., 1., 1.);
+    renderer->SetBackground(0.5, 0.5, 0.5);
     // GlobalIllumination apparently has no effect on the vtkGPURayCastMapper
     // volumeMapper->SetGlobalIlluminationReach(1.f);
     volumeProperty->SetShade(true);
@@ -162,7 +164,7 @@ int main(int argc, char* argv[])
         volume->GetBounds(bounds);
         int maxDim = 0;
         for (int i = 1; i < 3; i++)
-            if (bounds[i*2 + 1] - bounds[i*2] > maxDim)
+            if ((bounds[i*2 + 1] - bounds[i*2]) > (bounds[maxDim*2 + 1] - bounds[maxDim*2]))
                 maxDim = i;
         double maxSize = bounds[maxDim*2 + 1] - bounds[maxDim*2];
 
@@ -183,11 +185,11 @@ int main(int argc, char* argv[])
         // Using no scaling: in Volcanite, volumes are scaled so that larges axis has length 1 in world space.
         // The vtkGPUVolumeRayCaster cannot handle volumes with such a small world space size, producing empty images.
         // In VTK, we therefore use the default size (1 voxel = world space length 1) and scale camera distances.
-        // double scaleFactor = world_space_scale / maxSize;
-        // volumeTransform->Scale(scaleFactor, scaleFactor, scaleFactor);
+        //double scaleFactor = world_space_scale / maxSize;
+        //volumeTransform->Scale(scaleFactor, scaleFactor, scaleFactor);
         volumeTransform->Translate(-centerX, -centerY, -centerZ);
         volumeTransform->Concatenate(axisMat);
-        volumeTransform->Translate(-vcnt_camera.position_look_at_world_space.x * maxSize, -vcnt_camera.position_look_at_world_space.y * maxSize, -vcnt_camera.position_look_at_world_space.z * maxSize);
+        //volumeTransform->Translate(-vcnt_camera.position_look_at_world_space.x * maxSize, -vcnt_camera.position_look_at_world_space.y * maxSize, -vcnt_camera.position_look_at_world_space.z * maxSize);
         volume->SetUserTransform(volumeTransform);
 
         // Set up camera
@@ -198,7 +200,8 @@ int main(int argc, char* argv[])
             vtk_camera->SetPosition(vcnt_camera.get_position().x * maxSize, vcnt_camera.get_position().y * maxSize, vcnt_camera.get_position().z * maxSize);
             double cam_up[3] = {vcnt_camera.get_up_vector().x, vcnt_camera.get_up_vector().y, vcnt_camera.get_up_vector().z};
             vtk_camera->SetViewUp(cam_up);
-            vtk_camera->SetFocalPoint(0, 0, 0);
+            //vtk_camera->SetFocalPoint(0, 0, 0);
+            vtk_camera->SetFocalPoint(vcnt_camera.position_look_at_world_space.x * maxSize, vcnt_camera.position_look_at_world_space.y * maxSize, vcnt_camera.position_look_at_world_space.z * maxSize);
 
             // use Volcanite projection matrix
              vtkSmartPointer<vtkMatrix4x4> projMat = vtkSmartPointer<vtkMatrix4x4>::New();
@@ -229,10 +232,10 @@ int main(int argc, char* argv[])
             vtk_camera->SetViewAngle(vcnt_camera.vertical_fov / (2.f * M_PI) * 360.f);
             //vtk_camera->SetClippingRange(camera.near, camera.far);
 
-            // if (CAMERA_PATH.empty()) {
-            //     // load previously exported camera (if applicable)
-            //     LoadCameraFromFile(vtk_camera, CAMERA_PATH);
-            // }
+            if (!CAMERA_PATH.empty()) {
+                // load previously exported camera (if applicable)
+                LoadCameraFromFile(vtk_camera, CAMERA_PATH);
+            }
         }
 
 
@@ -258,10 +261,30 @@ int main(int argc, char* argv[])
         // update clipping and cropping planes
         // volumeMapper->SetSampleDistance(static_cast<float>((bounds[maxDim * 2 + 1] - bounds[maxDim * 2]) / maxSize));
         volumeMapper->SetSampleDistance(0.5);       // approx. half a voxel size
+        std::cout << "VTK: " << std::endl;
+        std::cout << bounds[0] << " - " << bounds[1] << std::endl;
+        std::cout << bounds[2] << " - " << bounds[3] << std::endl;
+        std::cout << bounds[4] << " - " << bounds[5] << std::endl;
+        std::cout << "center " << centerX << ", " << centerY << ", " << centerZ << std::endl;
+        std::cout << "Volcanite: " << std::endl;
+        std::cout << params.split_plane_x[0] << " - " << params.split_plane_x[1] << std::endl;
+        std::cout << params.split_plane_y[0] << " - " << params.split_plane_y[1] << std::endl;
+        std::cout << params.split_plane_z[0] << " - " << params.split_plane_z[1] << std::endl;
+        // adapt bounds to match Volcanite split planes:
+        bounds[0] = params.split_plane_x[0];
+        bounds[1] = params.split_plane_x[1];
+        bounds[2] = params.split_plane_y[0];
+        bounds[3] = params.split_plane_y[1];
+        bounds[4] = params.split_plane_z[0];
+        bounds[5] = params.split_plane_z[1];
+        std::cout << "VTK: " << std::endl;
+        std::cout << bounds[0] << " - " << bounds[1] << std::endl;
+        std::cout << bounds[2] << " - " << bounds[3] << std::endl;
+        std::cout << bounds[4] << " - " << bounds[5] << std::endl;
+        volumeMapper->SetCropping(true);
         volumeMapper->SetCroppingRegionPlanes(bounds);
         volumeMapper->Update();
         renderer->ResetCameraClippingRange();
-
 
         // TODO: remove debugging of vtk projection matrix here
         // double clippingRange[2];
@@ -339,12 +362,21 @@ int main(int argc, char* argv[])
     }
     else
     {
-        printCameraInfo(renderer->GetActiveCamera());
+        if (VERBOSE)
+        {
+            std::cout << "Initial camera:" << std::endl;
+            printCameraInfo(renderer->GetActiveCamera());
+        }
         vtkNew<vtkRenderWindowInteractor> interactor;
         interactor->SetRenderWindow(renderWindow);
         interactor->Start();
 
         SaveCameraToFile(vtk_camera, CAMERA_EXPORT_PATH);
+        if (VERBOSE)
+        {
+            std::cout << "Shutdown camear:" << std::endl;
+            printCameraInfo(renderer->GetActiveCamera());
+        }
     }
     return 0;
 }

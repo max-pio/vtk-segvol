@@ -7,10 +7,12 @@
 #include "stb/stb_image_write.hpp"
 
 #include <cstdint>
+#include <filesystem>
 #include <iostream>
 
 
-inline void SaveCameraToFile(vtkCamera* camera, const std::string& filename) {
+
+inline void exportCamera(vtkCamera* camera, const std::filesystem::path& filename) {
     std::ofstream file(filename);
     if (!file.is_open()) {
         std::cerr << "Could not open file " << filename << std::endl;
@@ -36,7 +38,7 @@ inline void SaveCameraToFile(vtkCamera* camera, const std::string& filename) {
     file.close();
 }
 
-inline void LoadCameraFromFile(vtkCamera* camera, const std::string& filename) {
+inline void importCamera(vtkCamera* camera, const std::filesystem::path& filename) {
     std::ifstream file(filename);
     if (!file.is_open()) {
         std::cerr << "Could not open file " << filename << std::endl;
@@ -73,7 +75,7 @@ inline void LoadCameraFromFile(vtkCamera* camera, const std::string& filename) {
     file.close();
 }
 
-inline void save_image(const vtkSmartPointer<vtkRenderWindow>& renderWindow)
+inline void exportImage(const vtkSmartPointer<vtkRenderWindow>& renderWindow, const std::filesystem::path& file)
 {
     // Capture the rendered image from the render window
     vtkSmartPointer<vtkWindowToImageFilter> windowToImageFilter = vtkSmartPointer<vtkWindowToImageFilter>::New();
@@ -91,7 +93,7 @@ inline void save_image(const vtkSmartPointer<vtkRenderWindow>& renderWindow)
 
     unsigned char* vtkPixels = static_cast<unsigned char*>(imageData->GetScalarPointer());
 
-    // stbi_write_png expects row pointers from top-left, whereas VTK image origin is bottom-left
+    // stbi_write_* expects row pointers from top-left, whereas VTK image origin is bottom-left
     // So we need to flip vertically before saving
     std::vector<unsigned char> flippedPixels(width * height * numberOfComponents);
     for (int y = 0; y < height; ++y)
@@ -102,16 +104,32 @@ inline void save_image(const vtkSmartPointer<vtkRenderWindow>& renderWindow)
             width * numberOfComponents);
     }
 
-    // Write PNG file using stb_image_write, with 4 components (RGBA)
-    if (stbi_write_png("./out.png", width, height, numberOfComponents, flippedPixels.data(),
-                       width * numberOfComponents))
+    if (file.extension() == ".jpg" || file.extension() == ".jpeg")
     {
-        std::cout << "Saved render to ./out.png\n";
+        // Write PNG file using stb_image_write, with 4 components (RGBA)
+        if (!stbi_write_jpg(absolute(file).c_str(), width, height, numberOfComponents, flippedPixels.data(),
+                           width * numberOfComponents))
+        {
+            std::cerr << "Failed to save JPEG file " << file << std::endl;
+            return;
+        }
+    } else if (file.extension() == ".png")
+    {
+        // Write PNG file using stb_image_write, with 4 components (RGBA)
+        if (!stbi_write_png(absolute(file).c_str(), width, height, numberOfComponents, flippedPixels.data(),
+                           width * numberOfComponents))
+        {
+            std::cerr << "Failed to save PNG file " << file <<  std::endl;
+            return;
+        }
     }
     else
     {
-        std::cerr << "Failed to save PNG file.\n";
+        std::cerr << "Image file extension not recognized: " << file << std::endl;
+        return;
     }
+
+    std::cout << "Saved image to " << file << std::endl;
 }
 
 struct Interval {
@@ -137,10 +155,10 @@ inline std::vector<Interval> mergeIntervals(std::vector<Interval> &intervals) {
     for (size_t i = 1; i < intervals.size(); ++i) {
         // Reference to last merged interval
 
-        if (Interval last = merged.back(); last.end >= intervals[i].start) {
+        if (auto [start, end] = merged.back(); end >= intervals[i].start) {
             // If overlapping, merge by extending the end if needed
-            if (last.end < intervals[i].end) {
-                last.end = intervals[i].end;
+            if (end < intervals[i].end) {
+                end = intervals[i].end;
             }
         } else {
             // No overlap, add interval to merged
@@ -153,9 +171,61 @@ inline std::vector<Interval> mergeIntervals(std::vector<Interval> &intervals) {
 
 inline void printCameraInfo(vtkCamera* camera)
 {
-    std::cout << "Pos: " << camera->GetPosition()[0] << "," << camera->GetPosition()[1] << "," << camera->GetPosition()[2] << std::endl;
-    std::cout << "Up:  " << camera->GetViewUp()[0] << "," << camera->GetViewUp()[1] << "," << camera->GetViewUp()[2] << std::endl;
-    std::cout << "Foc: " << camera->GetFocalPoint()[0] << "," << camera->GetFocalPoint()[1] << "," << camera->GetFocalPoint()[2] << std::endl;
-    std::cout << "Dst: " << camera->GetDistance() << std::endl;
-    std::cout << "Ang: " << camera->GetViewAngle() << std::endl;
+    std::cout << "  Pos: " << camera->GetPosition()[0] << "," << camera->GetPosition()[1] << "," << camera->GetPosition()[2] << std::endl;
+    std::cout << "  Up:  " << camera->GetViewUp()[0] << "," << camera->GetViewUp()[1] << "," << camera->GetViewUp()[2] << std::endl;
+    std::cout << "  Foc: " << camera->GetFocalPoint()[0] << "," << camera->GetFocalPoint()[1] << "," << camera->GetFocalPoint()[2] << std::endl;
+    std::cout << "  Dst: " << camera->GetDistance() << std::endl;
+    std::cout << "  Ang: " << camera->GetViewAngle() << std::endl;
+}
+
+
+struct EvalResult
+{
+    double min = 99999999999.f;
+    double max = 0.f;
+    double avg = 0.f;
+    double var = 0.f;
+    double frame[16] = {0.};
+};
+
+inline void exportResults(const EvalResult &result, const std::filesystem::path& file, bool consoleLog = true)
+{
+    if (consoleLog)
+    {
+        std::cout << "Render time [ms/frame]: " << std::endl;
+        std::cout << "  frames: ";
+        for (const double f : result.frame)
+            std::cout << f << ", ";
+        std::cout << std::endl;
+        std::cout << "  min: " << result.min << std::endl;
+        std::cout << "  avg: " << result.avg << std::endl;
+        std::cout << "  sdv: " << std::sqrt(result.var) << std::endl;
+        std::cout << "  max: " << result.max << std::endl;
+    }
+
+    const bool newFile = !std::filesystem::exists(file);
+
+    std::ofstream logFile(file, std::ios::out | std::ios::app);
+    if (!logFile.is_open())
+    {
+        std::cerr << "Failed to open log file " << file << std::endl;
+        return;
+    }
+
+    // if file did not exist: write CSV header
+    if (newFile)
+    {
+        logFile << "min,avg,stdv,max";
+        for (int i = 0; i < sizeof(EvalResult::frame)/sizeof(double); i++)
+            logFile << ",frame" << i;
+        logFile << std::endl;
+    }
+
+    // append a single line for this result
+    logFile << result.min << "," << result.avg << "," << std::sqrt(result.var) << "," << result.max;
+    for (const double f : result.frame)
+        logFile << "," << f;
+    logFile << std::endl;
+
+    logFile.close();
 }

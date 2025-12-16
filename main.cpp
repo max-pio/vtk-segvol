@@ -23,28 +23,30 @@
 #include "read_vcfg_tf.hpp"
 #include "util.hpp"
 
-// these could be command line arguments:
-const std::string CAMERA_PATH;
-
-const std::string VTI_PATH = "/media/maxpio/data/eval/azba/azba.hdf5";
-const std::string VCFG_PATH = "/home/maxpio/code/volcanite/eval/config/azba.vcfg";
-
-// const std::string VTI_PATH = "/media/maxpio/data/eval/xtm-battery/xtm-battery.hdf5";
-// const std::string VCFG_PATH = "/home/maxpio/code/volcanite/eval/config/xtm-battery.vcfg";
-
-// TODO: add other data sets, including Cells
-// TODO: make data sets command line arguments, call the binary from a bash / python script
-
-constexpr int RENDER_WIDTH = 1902;
-constexpr int RENDER_HEIGHT = 1080;
-constexpr bool VERBOSE = true;
-constexpr int FRAMES = 300;
-constexpr bool OFFSCREEN = false;
-const std::string CAMERA_EXPORT_PATH = "./camera.cam";
-
+#include "args.hpp"
 
 int main(int argc, char* argv[])
 {
+    // PARSE ARGUMENTS
+    const Config config = parseConfig(argc, argv);
+
+    // TODO: add option to loop over all data sets?
+    DataSet dataSet = config.data_set;
+    if (!std::filesystem::exists(getDataInputPath(config, dataSet)))
+    {
+        std::cerr << "Could not find segmentation volume file " << getDataInputPath(config, dataSet) << std::endl;
+        std::cerr << "Did you set the data set base directory as --data-dir <directory> ?" << std::endl;
+        return 1;
+    }
+    if (!std::filesystem::exists(getVcfgPath(config, dataSet)))
+    {
+        std::cerr << "Could not find VCFG configuration file " << getVcfgPath(config, dataSet) << std::endl;
+        std::cerr << "Did you set the .vcfg base directory as --vcfg-dir <directory> ?" << std::endl;
+        return 1;
+    }
+
+
+
     // SETUP -----------------------------------------------------------------------------------------------------------
 
     // disable vsync for VTK
@@ -52,7 +54,7 @@ int main(int argc, char* argv[])
 
     // load Volcanite configuration file (.vcfg) for importing translatebale parameters
     // note: this is all hardcoded for version 0.6.0
-    VolcaniteParameters params = VcfgSegVolTFFileReader::readParameterFile(VCFG_PATH);
+    VolcaniteParameters params = VcfgSegVolTFFileReader::readParameterFile(getVcfgPath(config, dataSet));;
 
     // RENDERING OBJECTS
     // use GPU ray casting for volume rendering
@@ -63,10 +65,12 @@ int main(int argc, char* argv[])
     // VOLUME IMPORT
     uint32_t label_min = UINT32_MAX, label_max = 0u;
     {
+        const std::filesystem::path volume_file = getDataInputPath(config, dataSet);
+
         // load volume from disk, compute min/max volume labels, and assign to VolumeMapper
-        if (VTI_PATH.ends_with(".vti")) {
+        if (volume_file.extension() == ".vti") {
             const vtkSmartPointer<vtkXMLImageDataReader> reader = vtkSmartPointer<vtkXMLImageDataReader>::New();
-            reader->SetFileName(VTI_PATH.c_str());
+            reader->SetFileName(volume_file.c_str());
             reader->Update();
 
             volumeMapper->SetInputConnection(reader->GetOutputPort());
@@ -75,17 +79,17 @@ int main(int argc, char* argv[])
             reader->GetOutput()->GetScalarRange(range);
             label_min = static_cast<uint32_t>(range[0]);
             label_max = static_cast<uint32_t>(range[1]);
-        } else if (VTI_PATH.ends_with(".hdf5") || VTI_PATH.ends_with(".h5")) {
+        } else if (volume_file.extension() == ".hdf5" || volume_file.extension() == ".h5") {
             size_t dimensions[3];
 
             // obtain volume dimensions from file, allocate memory
             const vtkSmartPointer<vtkImageData> image = vtkSmartPointer<vtkImageData>::New();
-            vvv::read_hdf5<uint32_t>(VTI_PATH, dimensions);
+            vvv::read_hdf5<uint32_t>(volume_file, dimensions);
             image->SetDimensions(static_cast<int>(dimensions[0]),
                                  static_cast<int>(dimensions[1]),
                                  static_cast<int>(dimensions[2]));
             image->AllocateScalars(VTK_UNSIGNED_INT, 1);
-            vvv::read_hdf5<uint32_t>(VTI_PATH, dimensions, static_cast<uint32_t*>(image->GetScalarPointer()));
+            vvv::read_hdf5<uint32_t>(volume_file, dimensions, static_cast<uint32_t*>(image->GetScalarPointer()));
             volumeMapper->SetInputData(image);
 
             double range[2];
@@ -93,7 +97,7 @@ int main(int argc, char* argv[])
             label_min = static_cast<uint32_t>(range[0]);
             label_max = static_cast<uint32_t>(range[1]);
         }
-        if (VERBOSE)
+        if (config.verbose)
             std::cout << "volume labels: [" << label_min << "," << label_max << "]" << std::endl;
     }
 
@@ -107,7 +111,7 @@ int main(int argc, char* argv[])
             }
         }
         intervals = mergeIntervals(intervals);
-        if (VERBOSE)
+        if (config.verbose)
         {
             std::cout << "Merged transfer function intervals:" << std::endl;
             for (const auto& i : intervals) {
@@ -131,7 +135,7 @@ int main(int argc, char* argv[])
             opacityTF->AddPoint(static_cast<int>(std::round(end * TF_SIZE)), VTK_FLOAT_MAX);
             opacityTF->AddPoint(static_cast<int>(std::round(end * TF_SIZE)), 0.);
 
-            if (VERBOSE)
+            if (config.verbose)
                 std::cout << "Interval [" << start << "," << end << "] " << std::endl;
         }
     }
@@ -162,7 +166,7 @@ int main(int argc, char* argv[])
     // Create rendering window
     vtkSmartPointer<vtkRenderWindow> renderWindow = vtkSmartPointer<vtkRenderWindow>::New();
     renderWindow->AddRenderer(renderer);
-    renderWindow->SetSize(RENDER_WIDTH, RENDER_HEIGHT);
+    renderWindow->SetSize(config.render_width, config.render_height);
 
     // CAMERA AND VOLUME TRANSFORMATIONS
     {
@@ -218,15 +222,16 @@ int main(int argc, char* argv[])
              const vtkSmartPointer<vtkMatrix4x4> projMat = vtkSmartPointer<vtkMatrix4x4>::New();
              for (int x = 0; x < 4; x++)
                  for (int y = 0; y < 4; y++)
-                     projMat->SetElement(x, y, params.camera.get_view_to_projection_space(static_cast<double>(RENDER_WIDTH)/static_cast<double>(RENDER_HEIGHT))[y][x]);
+                     projMat->SetElement(x, y, params.camera.get_view_to_projection_space(static_cast<float>(config.render_width)/static_cast<float>(config.render_height))[y][x]);
             projMat->SetElement(1, 1, projMat->GetElement(1, 1) * -1.);
             vtk_camera->SetExplicitProjectionTransformMatrix(projMat);
             vtk_camera->SetUseExplicitProjectionTransformMatrix(true);
             vtk_camera->SetViewAngle(vcnt_camera.vertical_fov / (2.f * M_PI) * 360.f);
 
-            if (!CAMERA_PATH.empty()) {
-                // load previously exported camera (if applicable)
-                LoadCameraFromFile(vtk_camera, CAMERA_PATH);
+            // Load previously exported camera (if requested)
+            if (!config.camera_import_file.empty()) {
+                std::cout << "Importing camera parameters from " << config.camera_import_file << std::endl;
+                importCamera(vtk_camera, config.camera_import_file);
             }
         }
 
@@ -241,14 +246,14 @@ int main(int argc, char* argv[])
         clipped_bounds[5] = glm::min(raw_bounds[5], static_cast<double>(params.split_plane_z[1]));
         volumeMapper->SetCropping(true);
         volumeMapper->SetCroppingRegionPlanes(clipped_bounds);
-        // volumeMapper->SetSampleDistance(static_cast<float>((bounds[maxDim * 2 + 1] - bounds[maxDim * 2]) / maxSize));
+        //volumeMapper->SetSampleDistance(static_cast<float>((clipped_bounds[maxDim * 2 + 1] - clipped_bounds[maxDim * 2]) / maxSize));
         volumeMapper->SetSampleDistance(0.5);
         volumeMapper->Update();
         // update camera clipping ranges
         renderer->ResetCameraClippingRange();
 
         // Display info (not when evaluating): create cube axes and transfer function overlay image
-        if (!OFFSCREEN)
+        if (!config.offscreen)
         {
             // get volume bounds after all transformations
             // note: clipping of the volume mapper is not considered here
@@ -271,7 +276,7 @@ int main(int argc, char* argv[])
 
     // RENDERING -------------------------------------------------------------------------------------------------------
 
-    if (OFFSCREEN)
+    if (config.offscreen)
     {
         renderWindow->OffScreenRenderingOn();
         renderWindow->MakeCurrent();  // Ensure context is current
@@ -280,52 +285,39 @@ int main(int argc, char* argv[])
         renderWindow->Render();
         renderer->GetLastRenderTimeInSeconds();
         // Render and measure frame times (CPU side)
-        std::array<double, FRAMES> cpuRenderTimes{};
-        for (int i = 0; i < FRAMES; ++i)
+        std::vector<double> cpuRenderTimes(config.render_frames, 0.);
+        for (int i = 0; i < config.render_frames; ++i)
         {
             renderWindow->Render();
             cpuRenderTimes[i] = renderer->GetLastRenderTimeInSeconds();
         }
 
-
-        // compute timing aggregates, print timings
-        std::cout << "Render time [ms/frame]: " << std::endl;
-        std::cout << "  fst: ";
-        double min = 99999999999.f;
-        double max = 0.f;
-        double avg = 0.f;
-        double var = 0.f;
-        //
-        for (int i = 0; i < FRAMES; ++i)
+        EvalResult res = {};
+        for (int i = 0; i < config.render_frames; ++i)
         {
             // convert to [ms]
             cpuRenderTimes.at(i) *= 1000.;
 
-            if (i < 16)
-                std::cout << cpuRenderTimes.at(i) << " ";
-
             // tracking variables
-            if (cpuRenderTimes.at(i) < min)
-                min = cpuRenderTimes.at(i);
-            if (cpuRenderTimes.at(i) > max)
-                max = cpuRenderTimes.at(i);
-            avg += cpuRenderTimes.at(i);
-            var += cpuRenderTimes.at(i) * cpuRenderTimes.at(i);
+            if (i < sizeof(EvalResult::frame) / sizeof(double))
+                res.frame[i] = cpuRenderTimes.at(i);
+            if (cpuRenderTimes.at(i) < res.min)
+                res.min = cpuRenderTimes.at(i);
+            if (cpuRenderTimes.at(i) > res.max)
+                res.max = cpuRenderTimes.at(i);
+            res.avg += cpuRenderTimes.at(i);
+            res.var += cpuRenderTimes.at(i) * cpuRenderTimes.at(i);
         }
-        avg /= FRAMES;
-        var = var/FRAMES - (avg * avg);
-        //
-        std::cout << std::endl;
-        std::cout << "  min: " << min << std::endl;
-        std::cout << "  avg: " << avg << std::endl;
-        std::cout << "  sdv: " << std::sqrt(var) << std::endl;
-        std::cout << "  max: " << max << std::endl;
+        res.avg /= config.render_frames;
+        res.var = res.var/config.render_frames - (res.avg * res.avg);
 
-        save_image(renderWindow);
+        // export results
+        exportResults(res, config.csv_result_file, config.verbose);
+        exportImage(renderWindow, config.image_export_file);
     }
     else
     {
-        if (VERBOSE)
+        if (config.verbose)
         {
             std::cout << "Initial camera:" << std::endl;
             printCameraInfo(renderer->GetActiveCamera());
@@ -334,8 +326,9 @@ int main(int argc, char* argv[])
         interactor->SetRenderWindow(renderWindow);
         interactor->Start();
 
-        SaveCameraToFile(renderer->GetActiveCamera(), CAMERA_EXPORT_PATH);
-        if (VERBOSE)
+        exportCamera(renderer->GetActiveCamera(), config.camera_export_file);
+
+        if (config.verbose)
         {
             std::cout << "Shutdown camera:" << std::endl;
             printCameraInfo(renderer->GetActiveCamera());

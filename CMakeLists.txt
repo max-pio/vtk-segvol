@@ -5,7 +5,7 @@ set(CMAKE_CXX_STANDARD 20)
 
 include(FetchContent)
 
-# Find Packages ----------------------------------------------------------------------------------------
+# Packages ----------------------------------------------------------------------------------------
 
 find_package(VTK REQUIRED COMPONENTS
         CommonColor
@@ -44,20 +44,29 @@ if (ENABLE_HDF5_SUPPORT)
 
         # fetch HighFive library
         # current repo: https://github.com/highfive-devs/highfive/
-#        FetchContent_Declare(
-#                HighFive
-#                GIT_REPOSITORY https://github.com/BlueBrain/HighFive
-#                GIT_TAG v2.2.2
-#                SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/extern/HighFive
-#        )
-#        FetchContent_MakeAvailable(HighFive)
-        add_subdirectory(extern/HighFive)
+        FetchContent_Declare(
+                HighFive
+                GIT_REPOSITORY https://github.com/BlueBrain/HighFive
+                GIT_TAG v2.2.2
+                SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/extern/HighFive
+        )
+        FetchContent_MakeAvailable(HighFive)
+        #add_subdirectory(extern/HighFive)
     else ()
         message(WARNING "ENABLE_HDF5_SUPPORT was set but hdf5 library could not be found.")
     endif ()
 endif ()
 
 find_package(OpenGL)
+
+FetchContent_Declare(
+        tclap
+        GIT_REPOSITORY https://github.com/mirror/tclap
+        GIT_TAG        v1.2.5
+        SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/extern/tclap
+)
+
+FetchContent_MakeAvailable(tclap)
 
 
 # Create Executable ----------------------------------------------------------------------------------------
@@ -68,6 +77,8 @@ add_executable(vtk-segvol
         extern/stb/stb_image_write.hpp
         #
         main.cpp
+        args.hpp
+        util.hpp
         read_hdf5.hpp
         read_vcfg_tf.hpp
 )

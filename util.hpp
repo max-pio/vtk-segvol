@@ -11,8 +11,9 @@
 #include <iostream>
 
 
-
 inline void exportCamera(vtkCamera* camera, const std::filesystem::path& filename) {
+    std::filesystem::create_directories(filename.parent_path());
+
     std::ofstream file(filename);
     if (!file.is_open()) {
         std::cerr << "Could not open file " << filename << std::endl;
@@ -104,6 +105,8 @@ inline void exportImage(const vtkSmartPointer<vtkRenderWindow>& renderWindow, co
             width * numberOfComponents);
     }
 
+    std::filesystem::create_directories(file.parent_path());
+
     if (file.extension() == ".jpg" || file.extension() == ".jpeg")
     {
         // Write PNG file using stb_image_write, with 4 components (RGBA)
@@ -188,7 +191,7 @@ struct EvalResult
     double frame[16] = {0.};
 };
 
-inline void exportResults(const EvalResult &result, const std::filesystem::path& file, bool consoleLog = true)
+inline void exportResults(const std::string& name, const EvalResult &result, const std::filesystem::path& file, bool consoleLog = true)
 {
     if (consoleLog)
     {
@@ -204,6 +207,8 @@ inline void exportResults(const EvalResult &result, const std::filesystem::path&
     }
 
     const bool newFile = !std::filesystem::exists(file);
+    if (newFile)
+        std::filesystem::create_directories(file.parent_path());
 
     std::ofstream logFile(file, std::ios::out | std::ios::app);
     if (!logFile.is_open())
@@ -215,17 +220,32 @@ inline void exportResults(const EvalResult &result, const std::filesystem::path&
     // if file did not exist: write CSV header
     if (newFile)
     {
-        logFile << "min,avg,stdv,max";
+        logFile << "dataset,min,avg,stdv,max";
         for (int i = 0; i < sizeof(EvalResult::frame)/sizeof(double); i++)
             logFile << ",frame" << i;
-        logFile << std::endl;
+        logFile << ",time" << std::endl;
     }
 
     // append a single line for this result
+    logFile << name << ",";
     logFile << result.min << "," << result.avg << "," << std::sqrt(result.var) << "," << result.max;
     for (const double f : result.frame)
         logFile << "," << f;
+    // get timestamp
+    std::time_t now = std::time(nullptr);
+    std::tm* local = std::localtime(&now);
+    char time_buf[20];
+    std::strftime(time_buf, sizeof(time_buf), "%Y-%m-%d %H:%M:%S", local);
+    logFile << "," << time_buf;
     logFile << std::endl;
 
     logFile.close();
+}
+
+// from PCG Hash from "Hash Functions for GPU Rendering", Mark Jarzynski and Marc Olano
+unsigned int pcg_hash(uint v)
+{
+    unsigned int state = v * 747796405u + 2891336453u;
+    unsigned int word = ((state >> ((state >> 28u) + 4u)) ^ state) * 277803737u;
+    return (word >> 22u) ^ word;
 }

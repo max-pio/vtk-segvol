@@ -16,7 +16,6 @@
 
 #include <cstdint>
 #include <iostream>
-#include <functional>
 #include <vector>
 
 #include "read_hdf5.hpp"
@@ -46,6 +45,7 @@ int main(int argc, char* argv[])
     }
 
 
+    std::cout << "Rendering segmentation volume " << getDataOutputName(config.data_set) << std::endl;
 
     // SETUP -----------------------------------------------------------------------------------------------------------
 
@@ -97,6 +97,7 @@ int main(int argc, char* argv[])
             label_min = static_cast<uint32_t>(range[0]);
             label_max = static_cast<uint32_t>(range[1]);
         }
+        std::cout << "Imported segmentation volume from file " << volume_file << std::endl;
         if (config.verbose)
             std::cout << "volume labels: [" << label_min << "," << label_max << "]" << std::endl;
     }
@@ -120,8 +121,9 @@ int main(int argc, char* argv[])
         }
 
         // Set up a single VTK color and opacity transfer function from the merged intervals
-        for (unsigned int x = 0; x < 256; x++)
-            colorTF->AddHSVPoint(static_cast<double>(x), static_cast<double>((std::hash<unsigned int>{}(x) >> 2u) % 256u) / 255., 1.f, 1.f);
+        constexpr int COLOR_TF_SIZE = 4096;
+        for (unsigned int x = 0; x < COLOR_TF_SIZE; x++)
+            colorTF->AddHSVPoint(static_cast<double>(x), static_cast<double>(pcg_hash(x) % 512u) / 512., 1., 1.);
         // fill the opacity TF from the materials opacity vector
         constexpr int TF_SIZE = (1 << 16) - 1;
         opacityTF->AddPoint(0., 0.0);
@@ -311,9 +313,11 @@ int main(int argc, char* argv[])
         res.avg /= config.render_frames;
         res.var = res.var/config.render_frames - (res.avg * res.avg);
 
+        std::cout << "Rendered " << config.render_frames << " frames. Average render time: " << res.avg << " ms/frame." << std::endl;
+
         // export results
-        exportResults(res, config.csv_result_file, config.verbose);
-        exportImage(renderWindow, config.image_export_file);
+        exportResults(getDataOutputName(config.data_set), res, config.csv_result_file, config.verbose);
+        exportImage(renderWindow, config.image_export_dir / (getDataOutputName(config.data_set) + ".png"));
     }
     else
     {

@@ -39,7 +39,7 @@ class VcfgSegVolTFFileReader {
 
 private:
 
-    static bool readParameter(const std::string &parameter_label, std::istream &parameter_stream, VolcaniteParameters& params) {
+    static bool readParameter(const std::string &parameter_label, std::istream &parameter_stream, VolcaniteParameters& params, bool verbose=false) {
         // check if this element list contains a parameter of the given label_name
         if (parameter_label == "Materials:") {
             size_t matCount;
@@ -69,7 +69,7 @@ private:
                 size_t colormap_control_points = 0;
                 parameter_stream >> colormap_control_points;
                 if (colormap_control_points > 65536) {
-                    std::cout << "Invalid color map control point count " << colormap_control_points;
+                    std::cout << ".vcfg: invalid color map control point count " << colormap_control_points;
                     return false;
                 }
                 for (int i = 0; i < colormap_control_points; i++) {
@@ -83,13 +83,14 @@ private:
                 int type;
                 parameter_stream >> type;
                 if (type < 0 || type > 3) {
-                    std::cout << "Unsupported color map type " << type;
+                    std::cout << ".vcfg: unsupported color map type " << type;
                     return false;
                 }
             }
 
             // parameter was consumed
-            std::cout << "successfully imported materials." << std::endl;
+            if (verbose)
+                std::cout << ".vcfg: successfully imported materials." << std::endl;
             return true;
         } else if (parameter_label == "Axis_Order:") {
             std::string tmp;
@@ -133,7 +134,7 @@ private:
     }
 
 
-    static bool readParameters(std::istream &in, VolcaniteParameters &params) {
+    static bool readParameters(std::istream &in, VolcaniteParameters &params, bool verbose=false) {
         std::string line;
         while (!in.eof() && std::getline(in, line)) {
 
@@ -151,7 +152,8 @@ private:
             // read camera parameters
             if (line == "[Camera]") {
                 params.camera.readFrom(in, true);
-                std::cout << "successfully imported camera." << std::endl;
+                if (verbose)
+                    std::cout << ".vcfg: successfully imported camera." << std::endl;
             }
 
             // one line contains data for one parameter. a single parameter is read from:
@@ -179,7 +181,7 @@ public:
     /// @param path path of the .vcfg file to import
     /// @param backup_parameters if the current parameters will be backed up to a tmp file and re-imported on failure
     /// @return true if parameters were successfully read from path, false otherwise
-    static VolcaniteParameters readParameterFile(const std::string &path) {
+    static VolcaniteParameters readParameterFile(const std::string &path, bool verbose=false) {
 
         VolcaniteParameters params;
 
@@ -191,7 +193,7 @@ public:
             in >> tmp; // "Version"
             in >> tmp; // VOLCANITE_VERSION
 
-            if (!readParameters(in, params)) {
+            if (!readParameters(in, params, verbose)) {
                 std::cout << "Could not import rendering parameters from " << path << std::endl;
             } else {
                 std::cout << "Imported rendering parameters from " << path << std::endl;

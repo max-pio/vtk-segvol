@@ -99,7 +99,9 @@ int main(int argc, char* argv[])
         }
         std::cout << "Imported segmentation volume from file " << volume_file << std::endl;
         if (config.verbose)
-            std::cout << "volume labels: [" << label_min << "," << label_max << "]" << std::endl;
+        {
+            std::cout << "  labels: [" << label_min << "," << label_max << "]" << std::endl;
+        }
     }
 
     // TRANSFER FUNCTION CREATION
@@ -121,7 +123,7 @@ int main(int argc, char* argv[])
         }
 
         // Set up a single VTK color and opacity transfer function from the merged intervals
-        constexpr int COLOR_TF_SIZE = 4096;
+        constexpr int COLOR_TF_SIZE = 32768;// 4096;
         for (unsigned int x = 0; x < COLOR_TF_SIZE; x++)
             colorTF->AddHSVPoint(static_cast<double>(x), static_cast<double>(pcg_hash(x) % 512u) / 512., 1., 1.);
         // fill the opacity TF from the materials opacity vector
@@ -130,7 +132,7 @@ int main(int argc, char* argv[])
         opacityTF->AddPoint(TF_SIZE, 0.0);
         for (const auto& i : intervals) {
             const double start = static_cast<double>(i.start - label_min) / static_cast<double>(label_max - label_min);
-            const double end = static_cast<double>(i.end + 1 - label_min) / static_cast<double>(label_max - label_min);
+            const double end = static_cast<double>(i.end - label_min + 1) / static_cast<double>(label_max - label_min);
 
             opacityTF->AddPoint(static_cast<int>(std::round(start * TF_SIZE)), 0.);
             opacityTF->AddPoint(static_cast<int>(std::round(start * TF_SIZE)), VTK_FLOAT_MAX);
@@ -138,7 +140,7 @@ int main(int argc, char* argv[])
             opacityTF->AddPoint(static_cast<int>(std::round(end * TF_SIZE)), 0.);
 
             if (config.verbose)
-                std::cout << "Interval [" << start << "," << end << "] " << std::endl;
+                std::cout << "Interval [" << start << "," << end << "] " << " -> [" << std::round(start * TF_SIZE) << "," << (std::round(end * TF_SIZE) + 1) << "]" << std::endl;
         }
     }
 

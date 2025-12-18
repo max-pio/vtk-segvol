@@ -139,8 +139,18 @@ inline Config parseConfig(int argc, char** argv)
             config.csv_result_file.string(), "path", cmd);
     TCLAP::ValueArg<int> dataSetArg("d", "data-set",
     "Data set index in [0 ... 6]", false, config.data_set, "int", cmd);
+    TCLAP::SwitchArg listDataArg("", "list-data",
+        "Prints all data set IDs to the console.", cmd, false);
 
     cmd.parse(argc, argv);
+
+    if (listDataArg.isSet())
+    {
+        std::cout << "Available data sets:" << std::endl;
+        for (int i = 0; i < 6; i++)
+            std::cout << i << ": " << getDataOutputName(static_cast<DataSet>(i)) << std::endl;
+        std::cout << std::endl;
+    }
 
     config.verbose       = verboseArg.getValue();
     config.offscreen     = interactiveArg.getValue();

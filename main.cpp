@@ -252,9 +252,12 @@ int main(int argc, char* argv[])
         volumeMapper->SetCroppingRegionPlanes(clipped_bounds);
         //volumeMapper->SetSampleDistance(static_cast<float>((clipped_bounds[maxDim * 2 + 1] - clipped_bounds[maxDim * 2]) / maxSize));
         volumeMapper->SetSampleDistance(0.5);
-        volumeMapper->Update();
         // update camera clipping ranges
-        renderer->ResetCameraClippingRange();
+          // TODO: far clips too early in the volumemapper
+          // vtk_camera->SetClippingRange(vcnt_camera.near, vcnt_camera.far * maxSize * 10.);
+          // renderer->SetClippingRangeExpansion(maxSize);
+        renderer->ResetCameraClippingRange(clipped_bounds);
+        volumeMapper->Update();
 
         // Display info (not when evaluating): create cube axes and transfer function overlay image
         if (!config.offscreen)

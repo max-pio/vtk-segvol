@@ -203,41 +203,11 @@ int main(int argc, char* argv[])
         // Using no scaling: in Volcanite, volumes are scaled so that larges axis has length 1 in world space.
         // The vtkGPUVolumeRayCaster cannot handle volumes with such a small world space size, producing empty images.
         // In VTK, we therefore use the default size (1 voxel = world space length 1) and scale camera distances.
-        //double scaleFactor = 1.f / maxSize;
-        //volumeTransform->Scale(scaleFactor, scaleFactor, scaleFactor);
+        // double scaleFactor = 1.f / maxSize;
+        // volumeTransform->Scale(scaleFactor, scaleFactor, scaleFactor);
         volumeTransform->Concatenate(axisMat);
         volumeTransform->Translate(-centerX, -centerY, -centerZ);
         volume->SetUserTransform(volumeTransform);
-
-        // Create camera transformations and projections
-        {
-            vtk_camera->SetPosition(vcnt_camera.get_position().x * maxSize,
-                                    vcnt_camera.get_position().y * maxSize,
-                                    vcnt_camera.get_position().z * maxSize);
-            const double cam_up[3] = {vcnt_camera.get_up_vector().x,
-                                      vcnt_camera.get_up_vector().y,
-                                      vcnt_camera.get_up_vector().z};
-            vtk_camera->SetViewUp(cam_up);
-            vtk_camera->SetFocalPoint(vcnt_camera.position_look_at_world_space.x * maxSize,
-                                      vcnt_camera.position_look_at_world_space.y * maxSize,
-                                      vcnt_camera.position_look_at_world_space.z * maxSize);
-
-            // Copy Volcanite camera projection matrix
-             const vtkSmartPointer<vtkMatrix4x4> projMat = vtkSmartPointer<vtkMatrix4x4>::New();
-             for (int x = 0; x < 4; x++)
-                 for (int y = 0; y < 4; y++)
-                     projMat->SetElement(x, y, params.camera.get_view_to_projection_space(static_cast<float>(config.render_width)/static_cast<float>(config.render_height))[y][x]);
-            projMat->SetElement(1, 1, projMat->GetElement(1, 1) * -1.);
-            vtk_camera->SetExplicitProjectionTransformMatrix(projMat);
-            vtk_camera->SetUseExplicitProjectionTransformMatrix(true);
-            vtk_camera->SetViewAngle(vcnt_camera.vertical_fov / (2.f * M_PI) * 360.f);
-
-            // Load previously exported camera (if requested)
-            if (!config.camera_import_file.empty()) {
-                std::cout << "Importing camera parameters from " << config.camera_import_file << std::endl;
-                importCamera(vtk_camera, config.camera_import_file);
-            }
-        }
 
         // adapt volume bounds to match Volcanite split planes:
         // note: these are in "raw" volume bound space, without the volume transform (translation) applied
@@ -251,13 +221,45 @@ int main(int argc, char* argv[])
         volumeMapper->SetCropping(true);
         volumeMapper->SetCroppingRegionPlanes(clipped_bounds);
         //volumeMapper->SetSampleDistance(static_cast<float>((clipped_bounds[maxDim * 2 + 1] - clipped_bounds[maxDim * 2]) / maxSize));
-        volumeMapper->SetSampleDistance(0.5);
-        // update camera clipping ranges
-          // TODO: far clips too early in the volumemapper
-          // vtk_camera->SetClippingRange(vcnt_camera.near, vcnt_camera.far * maxSize * 10.);
-          // renderer->SetClippingRangeExpansion(maxSize);
-        renderer->ResetCameraClippingRange(clipped_bounds);
-        volumeMapper->Update();
+        volumeMapper->SetSampleDistance(4);
+
+        // Create camera transformations and projections
+        {
+            // update camera clipping ranges (renderer->.. probably has no effect because of our manual projection matrix later)
+            renderer->ResetCameraClippingRange(clipped_bounds);
+            renderer->SetClippingRangeExpansion(1000.);
+            volumeMapper->Update();
+            // Volcanite clipping assumes volume world space size of 1 in its clipping planes.
+            // Move the far plane away before computing the projection matrix to not clip the volume back side in VTK.
+            vcnt_camera.far = static_cast<float>(3.f * maxSize * vcnt_camera.far);
+            vtk_camera->SetPosition(vcnt_camera.get_position().x * maxSize,
+                                    vcnt_camera.get_position().y * maxSize,
+                                    vcnt_camera.get_position().z * maxSize);
+            const double cam_up[3] = {vcnt_camera.get_up_vector().x,
+                                      vcnt_camera.get_up_vector().y,
+                                      vcnt_camera.get_up_vector().z};
+            vtk_camera->SetViewUp(cam_up);
+            vtk_camera->SetFocalPoint(vcnt_camera.position_look_at_world_space.x * maxSize,
+                                      vcnt_camera.position_look_at_world_space.y * maxSize,
+                                      vcnt_camera.position_look_at_world_space.z * maxSize);
+
+            // Copy Volcanite camera projection matrix
+            // TODO: near and far planes are different...
+            const vtkSmartPointer<vtkMatrix4x4> projMat = vtkSmartPointer<vtkMatrix4x4>::New();
+            for (int x = 0; x < 4; x++)
+                for (int y = 0; y < 4; y++)
+                    projMat->SetElement(x, y, params.camera.get_view_to_projection_space(static_cast<float>(config.render_width)/static_cast<float>(config.render_height))[y][x]);
+            projMat->SetElement(1, 1, projMat->GetElement(1, 1) * -1.);
+            vtk_camera->SetExplicitProjectionTransformMatrix(projMat);
+            vtk_camera->SetUseExplicitProjectionTransformMatrix(true);
+            vtk_camera->SetViewAngle(vcnt_camera.vertical_fov / (2.f * M_PI) * 360.f);
+
+            // Load previously exported camera (if requested)
+            if (!config.camera_import_file.empty()) {
+                std::cout << "Importing camera parameters from " << config.camera_import_file << std::endl;
+                importCamera(vtk_camera, config.camera_import_file);
+            }
+        }
 
         // Display info (not when evaluating): create cube axes and transfer function overlay image
         if (!config.offscreen)

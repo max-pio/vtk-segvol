@@ -234,7 +234,7 @@ inline void exportResults(const std::string& name, const EvalResult &result, con
         logFile << ",time" << std::endl;
     }
 
-    logFile << time_buf << " | VTK Version " << vtkVersion::GetVTKVersion() << std::endl;
+    logFile << "# " << time_buf << ", VTK Version " << vtkVersion::GetVTKVersion() << std::endl;
 
     // append a single line for this result
     logFile << name << ",";

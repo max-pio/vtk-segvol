@@ -1,5 +1,6 @@
 #pragma once
 
+#include <optional>
 #include <tclap/CmdLine.h>
 
 enum DataSet
@@ -23,8 +24,10 @@ struct Config
     std::filesystem::path camera_import_file = {};
     std::filesystem::path camera_export_file = "./camera.cam";
     std::filesystem::path image_export_dir = "./";
+    std::optional<std::filesystem::path> image_export_override_file = {};
     std::filesystem::path data_base_dir = "./";
     std::filesystem::path vcfg_base_dir = "./";
+    std::optional<std::filesystem::path> vcfg_override_file = {};
     std::filesystem::path csv_result_file = "./results.csv";
     // note: Ara2016, Griesser*, Motta2019 (large), etc. not available due to missing support for chunked files
     DataSet data_set = AZBA;         ///< one of {AZBA, CELLS, FIBER, MOTTA2019SMALL, PA66, WOLNY2020, XTMBATTERY};
@@ -99,7 +102,10 @@ inline std::string getDataOutputName(const DataSet data)
 
 inline std::filesystem::path getVcfgPath(const Config& config, const DataSet data)
 {
-    return config.vcfg_base_dir / (getDataOutputName(data) + ".vcfg");
+    if (config.vcfg_override_file.has_value())
+        return config.vcfg_override_file.value();
+    else
+        return config.vcfg_base_dir / (getDataOutputName(data) + ".vcfg");
 }
 
 
@@ -129,12 +135,18 @@ inline Config parseConfig(int argc, char** argv)
     TCLAP::ValueArg<std::string> imgExportArg("",
         "image-dir", "Image export directory", false,
         config.image_export_dir.string(), "path", cmd);
+    TCLAP::ValueArg<std::string> imgExportOverrideFileArg("",
+        "image-output-file", "Image output file (overrides auto select from image-dir)",
+        false, "", "path", cmd);
     TCLAP::ValueArg<std::string> dataBaseArg("",
         "data-dir", "Data base directory", false,
         config.data_base_dir.string(), "path", cmd);
     TCLAP::ValueArg<std::string> vcfgBaseArg("",
             "vcfg-dir", ".vcfg base directory", false,
             config.vcfg_base_dir.string(), "path", cmd);
+    TCLAP::ValueArg<std::string> vcfgOverrideFileArg("",
+            "vcfg-file", ".vcfg configuration file (overrides auto select from vcfg-dir)", false,
+            "", "path", cmd);
     TCLAP::ValueArg<std::string> resultFileArg("",
             "results-file", "Results .csv file", false,
             config.csv_result_file.string(), "path", cmd);
@@ -164,10 +176,14 @@ inline Config parseConfig(int argc, char** argv)
         config.camera_export_file = std::filesystem::path(camExportArg.getValue());
     if (imgExportArg.isSet())
         config.image_export_dir = std::filesystem::path(imgExportArg.getValue());
+    if (imgExportOverrideFileArg.isSet())
+        config.image_export_override_file = std::filesystem::path(imgExportOverrideFileArg.getValue());
     if (dataBaseArg.isSet())
         config.data_base_dir = std::filesystem::path(dataBaseArg.getValue());
     if (vcfgBaseArg.isSet())
         config.vcfg_base_dir = std::filesystem::path(vcfgBaseArg.getValue());
+    if (vcfgOverrideFileArg.isSet())
+        config.vcfg_override_file = std::filesystem::path(vcfgOverrideFileArg.getValue());
     if (resultFileArg.isSet())
         config.csv_result_file = std::filesystem::path(resultFileArg.getValue());
     config.data_set = static_cast<DataSet>(dataSetArg.getValue());

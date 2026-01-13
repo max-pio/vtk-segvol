@@ -91,7 +91,6 @@ int main(int argc, char* argv[])
                                  static_cast<int>(dimensions[2]));
             image->AllocateScalars(VTK_UNSIGNED_INT, 1);
             image->SetSpacing(params.axis_scale[0], params.axis_scale[1], params.axis_scale[2]);
-            std::cout << params.axis_scale[0] << "," << params.axis_scale[1] << "," << params.axis_scale[2] << std::endl;
             vvv::read_hdf5<uint32_t>(volume_file, dimensions, static_cast<uint32_t*>(image->GetScalarPointer()));
             volumeMapper->SetInputData(image);
             volumeMapper->Update();
@@ -339,7 +338,8 @@ int main(int argc, char* argv[])
 
         // export results
         exportResults(getDataOutputName(config.data_set), res, config.csv_result_file, config.verbose);
-        exportImage(renderWindow, config.image_export_dir / (getDataOutputName(config.data_set) + ".png"));
+        exportImage(renderWindow, config.image_export_override_file.has_value() ? config.image_export_override_file.value()
+                                    : config.image_export_dir / (getDataOutputName(config.data_set) + ".png"));
     }
     else
     {

@@ -26,6 +26,7 @@ struct Config
     std::filesystem::path data_base_dir = "./";
     std::filesystem::path vcfg_base_dir = "./";
     std::filesystem::path csv_result_file = "./results.csv";
+    // note: Ara2016, Griesser*, Motta2019 (large), etc. not available due to missing support for chunked files
     DataSet data_set = AZBA;         ///< one of {AZBA, CELLS, FIBER, MOTTA2019SMALL, PA66, WOLNY2020, XTMBATTERY};
 };
 

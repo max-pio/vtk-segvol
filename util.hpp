@@ -188,6 +188,7 @@ struct EvalResult
     double max = 0.f;
     double avg = 0.f;
     double var = 0.f;
+    double med = 0.f;
     double frame[16] = {0.};
 };
 
@@ -220,7 +221,7 @@ inline void exportResults(const std::string& name, const EvalResult &result, con
     // if file did not exist: write CSV header
     if (newFile)
     {
-        logFile << "dataset,min,avg,stdv,max";
+        logFile << "Data Set,frame min [ms],frame avg [ms],frame max [ms],stdv,frame med [ms]";
         for (int i = 0; i < sizeof(EvalResult::frame)/sizeof(double); i++)
             logFile << ",frame" << i;
         logFile << ",time" << std::endl;
@@ -228,7 +229,7 @@ inline void exportResults(const std::string& name, const EvalResult &result, con
 
     // append a single line for this result
     logFile << name << ",";
-    logFile << result.min << "," << result.avg << "," << std::sqrt(result.var) << "," << result.max;
+    logFile << result.min << "," << result.avg << "," << result.max << "," << std::sqrt(result.var) << "," << result.med;
     for (const double f : result.frame)
         logFile << "," << f;
     // get timestamp

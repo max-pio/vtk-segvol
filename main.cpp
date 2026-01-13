@@ -26,6 +26,7 @@
 
 int main(int argc, char* argv[])
 {
+
     // PARSE ARGUMENTS
     const Config config = parseConfig(argc, argv);
 
@@ -45,7 +46,7 @@ int main(int argc, char* argv[])
     }
 
 
-    std::cout << "Rendering segmentation volume " << getDataOutputName(config.data_set) << std::endl;
+    std::cout << "Rendering segmentation volume '" << getDataOutputName(config.data_set) << "'" << std::endl;
 
     // SETUP -----------------------------------------------------------------------------------------------------------
 
@@ -123,24 +124,29 @@ int main(int argc, char* argv[])
         }
 
         // Set up a single VTK color and opacity transfer function from the merged intervals
-        constexpr int COLOR_TF_SIZE = 32768;// 4096;
+        const int COLOR_TF_SIZE = glm::min(256u, label_max);
         for (unsigned int x = 0; x < COLOR_TF_SIZE; x++)
-            colorTF->AddHSVPoint(static_cast<double>(x), static_cast<double>(pcg_hash(x) % 512u) / 512., 1., 1.);
+            colorTF->AddHSVPoint(static_cast<double>(x) * ((label_max + 1) / static_cast<double>(COLOR_TF_SIZE)),
+                                 static_cast<double>(pcg_hash(x) % 512u) / 512.,
+                                 0.8f,
+                                 0.8f);
         // fill the opacity TF from the materials opacity vector
-        constexpr int TF_SIZE = (1 << 16) - 1;
+        //constexpr int TF_SIZE = (1 << 16) - 1;
+        const uint32_t TF_SIZE = label_max;
         opacityTF->AddPoint(0., 0.0);
         opacityTF->AddPoint(TF_SIZE, 0.0);
         for (const auto& i : intervals) {
-            const double start = static_cast<double>(i.start - label_min) / static_cast<double>(label_max - label_min);
-            const double end = static_cast<double>(i.end - label_min + 1) / static_cast<double>(label_max - label_min);
-
-            opacityTF->AddPoint(static_cast<int>(std::round(start * TF_SIZE)), 0.);
-            opacityTF->AddPoint(static_cast<int>(std::round(start * TF_SIZE)), VTK_FLOAT_MAX);
-            opacityTF->AddPoint(static_cast<int>(std::round(end * TF_SIZE)), VTK_FLOAT_MAX);
-            opacityTF->AddPoint(static_cast<int>(std::round(end * TF_SIZE)), 0.);
-
-            if (config.verbose)
-                std::cout << "Interval [" << start << "," << end << "] " << " -> [" << std::round(start * TF_SIZE) << "," << (std::round(end * TF_SIZE) + 1) << "]" << std::endl;
+            opacityTF->AddPoint(i.start, 0.);
+            opacityTF->AddPoint(i.start, VTK_FLOAT_MAX);
+            if (i.start == i.end && label_max < 32768u) {
+                // fix for single-label materials in data sets where the transfer function can actually sample all labels
+                opacityTF->AddPoint(i.end + 0.9, VTK_FLOAT_MAX);
+                opacityTF->AddPoint(i.end + 0.9, 0.);
+            } else {
+                // in data sets with more labels than transfer function entries, assign regions conservatively to retain empty space
+                opacityTF->AddPoint(i.end, VTK_FLOAT_MAX);
+                opacityTF->AddPoint(i.end, 0.);
+            }
         }
     }
 
@@ -181,9 +187,10 @@ int main(int argc, char* argv[])
         double raw_bounds[6];
         volume->GetBounds(raw_bounds);
         int maxDim = 0;
-        for (int i = 1; i < 3; i++)
+        for (int i = 0; i < 3; i++) {
             if ((raw_bounds[i*2 + 1] - raw_bounds[i*2]) > (raw_bounds[maxDim*2 + 1] - raw_bounds[maxDim*2]))
                 maxDim = i;
+        }
         double maxSize = raw_bounds[maxDim*2 + 1] - raw_bounds[maxDim*2];
 
         // Compute center of the volume
@@ -207,6 +214,7 @@ int main(int argc, char* argv[])
         // volumeTransform->Scale(scaleFactor, scaleFactor, scaleFactor);
         volumeTransform->Concatenate(axisMat);
         volumeTransform->Translate(-centerX, -centerY, -centerZ);
+        //volumeTransform->Scale(1, 1, 1);
         volume->SetUserTransform(volumeTransform);
 
         // adapt volume bounds to match Volcanite split planes:
@@ -221,7 +229,7 @@ int main(int argc, char* argv[])
         volumeMapper->SetCropping(true);
         volumeMapper->SetCroppingRegionPlanes(clipped_bounds);
         //volumeMapper->SetSampleDistance(static_cast<float>((clipped_bounds[maxDim * 2 + 1] - clipped_bounds[maxDim * 2]) / maxSize));
-        volumeMapper->SetSampleDistance(4);
+        //volumeMapper->SetSampleDistance(0.5);
 
         // Create camera transformations and projections
         {
@@ -319,6 +327,13 @@ int main(int argc, char* argv[])
         }
         res.avg /= config.render_frames;
         res.var = res.var/config.render_frames - (res.avg * res.avg);
+        {
+            std::sort(cpuRenderTimes.begin(), cpuRenderTimes.end());
+            if (config.render_frames % 2 == 0)
+                res.med = (cpuRenderTimes[config.render_frames / 2] + cpuRenderTimes[config.render_frames / 2 + 1]) / 2.;
+            else
+                res.med = cpuRenderTimes[config.render_frames / 2];
+        }
 
         std::cout << "Rendered " << config.render_frames << " frames. Average render time: " << res.avg << " ms/frame." << std::endl;
 
@@ -344,6 +359,8 @@ int main(int argc, char* argv[])
             std::cout << "Shutdown camera:" << std::endl;
             printCameraInfo(renderer->GetActiveCamera());
         }
+
+        std::cout << std::endl;
     }
     return 0;
 }

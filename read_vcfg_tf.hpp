@@ -28,8 +28,9 @@ public:
 struct VolcaniteParameters {
     vvv::Camera camera;
     std::vector<SegmentedVolumeMaterial> materials;
-    glm::ivec3 axis_order; ///< permutation of 012 (xyz) axes
-    glm::bvec3 axis_flip;
+    glm::ivec3 axis_order = {0, 1, 2}; ///< permutation of 012 (xyz) axes
+    glm::bvec3 axis_flip = {false, false, false};
+    glm::vec3 axis_scale = {1.f, 1.f, 1.f};  ///< axis scaling normalized so that the largest axis scale is 1
     glm::ivec2 split_plane_x;
     glm::ivec2 split_plane_y;
     glm::ivec2 split_plane_z;
@@ -126,6 +127,13 @@ private:
         } else if (parameter_label == "Splitting_Plane_Z:") {
             parameter_stream >> params.split_plane_z[0];
             parameter_stream >> params.split_plane_z[1];
+            return true;
+        } else if (parameter_label == "Voxel_Size:") {
+            parameter_stream >> params.axis_scale[0];
+            parameter_stream >> params.axis_scale[1];
+            parameter_stream >> params.axis_scale[2];
+            float max_voxel_size = glm::max(params.axis_scale[0], glm::max(params.axis_scale[1], params.axis_scale[2]));
+            params.axis_scale /= max_voxel_size;
             return true;
         } else {
             // parameter was not consumed

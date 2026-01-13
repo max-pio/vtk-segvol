@@ -1,4 +1,8 @@
 cmake-build-*/*
 .idea/*
-out/*
 extern/tclap
+extern/HighFive
+out/*
+results/*
+volcanite-eval-setup.txt
+vulkan_pipeline_cache.data

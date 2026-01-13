@@ -30,18 +30,6 @@ option(ENABLE_HDF5_SUPPORT  "Includes the hdf5 library for importing and exporti
 if (ENABLE_HDF5_SUPPORT)
     find_package(HDF5 QUIET)
     if (HDF5_FOUND)
-        # set HighFive CMake cache options
-        set(USE_BOOST OFF CACHE INTERNAL "")
-        set(USE_EIGEN OFF CACHE INTERNAL "")
-        set(USE_XTENSOR OFF CACHE INTERNAL "")
-        set(USE_OPENCV OFF CACHE INTERNAL "")
-        mark_as_advanced(USE_BOOST USE_EIGEN USE_XTENSOR)
-
-        set(HIGHFIVE_UNIT_TESTS OFF CACHE INTERNAL "")
-        set(HIGHFIVE_EXAMPLES OFF CACHE INTERNAL "")
-        set(HIGHFIVE_BUILD_DOCS OFF CACHE INTERNAL "")
-        set(HDF5_PREFER_PARALLEL ON CACHE INTERNAL "")
-
         # fetch HighFive library
         # old repo: https://github.com/BlueBrain/HighFive
         # current repo: https://github.com/highfive-devs/highfive/
@@ -51,6 +39,20 @@ if (ENABLE_HDF5_SUPPORT)
                 GIT_TAG v2.2.2
                 #SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/extern/HighFive
         )
+
+                # set HighFive CMake cache options
+        set(USE_BOOST OFF CACHE INTERNAL "")
+        set(USE_EIGEN OFF CACHE INTERNAL "")
+        set(USE_XTENSOR OFF CACHE INTERNAL "")
+        set(USE_OPENCV OFF CACHE INTERNAL "")
+        mark_as_advanced(USE_BOOST USE_EIGEN USE_XTENSOR)
+
+        set(HIGHFIVE_UNIT_TESTS OFF CACHE INTERNAL "")
+        set(HIGHFIVE_EXAMPLES OFF CACHE INTERNAL "")
+        set(HIGHFIVE_BUILD_DOCS OFF CACHE INTERNAL "")
+        set(HighFive_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+        set(HDF5_PREFER_PARALLEL ON CACHE INTERNAL "")
+
         FetchContent_MakeAvailable(HighFive)
         #add_subdirectory(extern/HighFive)
     else ()

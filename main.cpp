@@ -12,6 +12,7 @@
 #include <vtkTransform.h>
 #include <vtkGPUVolumeRayCastMapper.h>
 #include <vtkOpenGLGPUVolumeRayCastMapper.h>
+#include <vtkVersion.h>
 #include <vtkVolume.h>
 
 #include <cstdint>
@@ -26,11 +27,9 @@
 
 int main(int argc, char* argv[])
 {
-
     // PARSE ARGUMENTS
     const Config config = parseConfig(argc, argv);
 
-    // TODO: add option to loop over all data sets?
     DataSet dataSet = config.data_set;
     if (!std::filesystem::exists(getDataInputPath(config, dataSet)))
     {
@@ -47,6 +46,7 @@ int main(int argc, char* argv[])
 
 
     std::cout << "Rendering segmentation volume '" << getDataOutputName(config.data_set) << "'" << std::endl;
+    std::cout << "VTK Version: " << vtkVersion::GetVTKVersion() << std::endl;
 
     // SETUP -----------------------------------------------------------------------------------------------------------
 
@@ -168,11 +168,10 @@ int main(int argc, char* argv[])
     // - white background
     // - local shading
     // - step size approx. half a voxel
-    vtkSmartPointer<vtkRenderer> renderer = vtkSmartPointer<vtkRenderer>::New();
+    const vtkSmartPointer<vtkRenderer> renderer = vtkSmartPointer<vtkRenderer>::New();
     renderer->AddVolume(volume);
     renderer->SetBackground(1., 1., 1.);
-    // GlobalIllumination apparently has no effect on the vtkGPURayCastMapper
-    // volumeMapper->SetGlobalIlluminationReach(maxSize);
+    // GlobalIllumination (e.g. Shadows) have no effect on the vtkGPURayCastMapper / are not supported
     volumeProperty->SetShade(true);
     volumeProperty->SetAmbient(0.3);
     // Create rendering window
@@ -196,13 +195,13 @@ int main(int argc, char* argv[])
         double maxSize = raw_bounds[maxDim*2 + 1] - raw_bounds[maxDim*2];
 
         // Compute center of the volume
-        double centerX = (raw_bounds[1] + raw_bounds[0]) / 2.0;
-        double centerY = (raw_bounds[3] + raw_bounds[2]) / 2.0;
-        double centerZ = (raw_bounds[5] + raw_bounds[4]) / 2.0;
+        const double centerX = (raw_bounds[1] + raw_bounds[0]) / 2.0;
+        const double centerY = (raw_bounds[3] + raw_bounds[2]) / 2.0;
+        const double centerZ = (raw_bounds[5] + raw_bounds[4]) / 2.0;
 
         // Create volume transformations to center the volume around the Volcanite camera lookat / origin.
-        vtkSmartPointer<vtkTransform> volumeTransform = vtkSmartPointer<vtkTransform>::New();
-        vtkSmartPointer<vtkMatrix4x4> axisMat = vtkSmartPointer<vtkMatrix4x4>::New();
+        const vtkSmartPointer<vtkTransform> volumeTransform = vtkSmartPointer<vtkTransform>::New();
+        const vtkSmartPointer<vtkMatrix4x4> axisMat = vtkSmartPointer<vtkMatrix4x4>::New();
         for (int a = 0; a < 3; a++) {
             axisMat->SetElement(0, a, 0.);
             axisMat->SetElement(1, a, 0.);
@@ -253,7 +252,6 @@ int main(int argc, char* argv[])
                                       vcnt_camera.position_look_at_world_space.z * maxSize);
 
             // Copy Volcanite camera projection matrix
-            // TODO: near and far planes are different...
             const vtkSmartPointer<vtkMatrix4x4> projMat = vtkSmartPointer<vtkMatrix4x4>::New();
             for (int x = 0; x < 4; x++)
                 for (int y = 0; y < 4; y++)
@@ -327,7 +325,7 @@ int main(int argc, char* argv[])
         res.avg /= config.render_frames;
         res.var = res.var/config.render_frames - (res.avg * res.avg);
         {
-            std::sort(cpuRenderTimes.begin(), cpuRenderTimes.end());
+            std::ranges::sort(cpuRenderTimes);
             if (config.render_frames % 2 == 0)
                 res.med = (cpuRenderTimes[config.render_frames / 2] + cpuRenderTimes[config.render_frames / 2 + 1]) / 2.;
             else

@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.30)
+cmake_minimum_required(VERSION 3.28)
 project(vtk-segvol)
 
 set(CMAKE_CXX_STANDARD 20)
@@ -43,12 +43,13 @@ if (ENABLE_HDF5_SUPPORT)
         set(HDF5_PREFER_PARALLEL ON CACHE INTERNAL "")
 
         # fetch HighFive library
+        # old repo: https://github.com/BlueBrain/HighFive
         # current repo: https://github.com/highfive-devs/highfive/
         FetchContent_Declare(
                 HighFive
-                GIT_REPOSITORY https://github.com/BlueBrain/HighFive
+                GIT_REPOSITORY https://github.com/highfive-devs/highfive/
                 GIT_TAG v2.2.2
-                SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/extern/HighFive
+                #SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/extern/HighFive
         )
         FetchContent_MakeAvailable(HighFive)
         #add_subdirectory(extern/HighFive)
@@ -63,7 +64,7 @@ FetchContent_Declare(
         tclap
         GIT_REPOSITORY https://github.com/mirror/tclap
         GIT_TAG        v1.2.5
-        SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/extern/tclap
+        #SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/extern/tclap
 )
 
 FetchContent_MakeAvailable(tclap)

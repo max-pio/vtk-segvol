@@ -2,6 +2,7 @@
 
 #include <vtkCamera.h>
 #include <vtkSmartPointer.h>
+#include <vtkVersion.h>
 #include <vtkWindowToImageFilter.h>
 
 #include "stb/stb_image_write.hpp"
@@ -218,6 +219,12 @@ inline void exportResults(const std::string& name, const EvalResult &result, con
         return;
     }
 
+    // get timestamp
+    std::time_t now = std::time(nullptr);
+    std::tm* local = std::localtime(&now);
+    char time_buf[20];
+    std::strftime(time_buf, sizeof(time_buf), "%Y-%m-%d %H:%M:%S", local);
+
     // if file did not exist: write CSV header
     if (newFile)
     {
@@ -227,16 +234,13 @@ inline void exportResults(const std::string& name, const EvalResult &result, con
         logFile << ",time" << std::endl;
     }
 
+    logFile << time_buf << " | VTK Version " << vtkVersion::GetVTKVersion() << std::endl;
+
     // append a single line for this result
     logFile << name << ",";
     logFile << result.min << "," << result.avg << "," << result.max << "," << std::sqrt(result.var) << "," << result.med;
     for (const double f : result.frame)
         logFile << "," << f;
-    // get timestamp
-    std::time_t now = std::time(nullptr);
-    std::tm* local = std::localtime(&now);
-    char time_buf[20];
-    std::strftime(time_buf, sizeof(time_buf), "%Y-%m-%d %H:%M:%S", local);
     logFile << "," << time_buf;
     logFile << std::endl;
 

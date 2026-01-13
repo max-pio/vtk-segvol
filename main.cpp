@@ -231,8 +231,7 @@ int main(int argc, char* argv[])
         clipped_bounds[5] = glm::min(raw_bounds[5], static_cast<double>(params.split_plane_z[1]) * params.axis_scale[2]);
         volumeMapper->SetCropping(true);
         volumeMapper->SetCroppingRegionPlanes(clipped_bounds);
-        //volumeMapper->SetSampleDistance(static_cast<float>((clipped_bounds[maxDim * 2 + 1] - clipped_bounds[maxDim * 2]) / maxSize));
-        //volumeMapper->SetSampleDistance(0.5);
+        volumeMapper->SetSampleDistance(0.5);
 
         // Create camera transformations and projections
         {

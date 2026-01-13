@@ -132,8 +132,8 @@ private:
             parameter_stream >> params.axis_scale[0];
             parameter_stream >> params.axis_scale[1];
             parameter_stream >> params.axis_scale[2];
-            float max_voxel_size = glm::max(params.axis_scale[0], glm::max(params.axis_scale[1], params.axis_scale[2]));
-            params.axis_scale /= max_voxel_size;
+            float min_voxel_size = glm::min(params.axis_scale[0], glm::min(params.axis_scale[1], params.axis_scale[2]));
+            params.axis_scale /= min_voxel_size;
             return true;
         } else {
             // parameter was not consumed

@@ -90,8 +90,11 @@ int main(int argc, char* argv[])
                                  static_cast<int>(dimensions[1]),
                                  static_cast<int>(dimensions[2]));
             image->AllocateScalars(VTK_UNSIGNED_INT, 1);
+            image->SetSpacing(params.axis_scale[0], params.axis_scale[1], params.axis_scale[2]);
+            std::cout << params.axis_scale[0] << "," << params.axis_scale[1] << "," << params.axis_scale[2] << std::endl;
             vvv::read_hdf5<uint32_t>(volume_file, dimensions, static_cast<uint32_t*>(image->GetScalarPointer()));
             volumeMapper->SetInputData(image);
+            volumeMapper->Update();
 
             double range[2];
             image->GetScalarRange(range);
@@ -129,7 +132,7 @@ int main(int argc, char* argv[])
             colorTF->AddHSVPoint(static_cast<double>(x) * ((label_max + 1) / static_cast<double>(COLOR_TF_SIZE)),
                                  static_cast<double>(pcg_hash(x) % 512u) / 512.,
                                  0.8f,
-                                 0.8f);
+                                 1.f);
         // fill the opacity TF from the materials opacity vector
         //constexpr int TF_SIZE = (1 << 16) - 1;
         const uint32_t TF_SIZE = label_max;
@@ -220,12 +223,12 @@ int main(int argc, char* argv[])
         // adapt volume bounds to match Volcanite split planes:
         // note: these are in "raw" volume bound space, without the volume transform (translation) applied
         double clipped_bounds[6];
-        clipped_bounds[0] = glm::max(raw_bounds[0], static_cast<double>(params.split_plane_x[0]));
-        clipped_bounds[1] = glm::min(raw_bounds[1], static_cast<double>(params.split_plane_x[1]));
-        clipped_bounds[2] = glm::max(raw_bounds[2], static_cast<double>(params.split_plane_y[0]));
-        clipped_bounds[3] = glm::min(raw_bounds[3], static_cast<double>(params.split_plane_y[1]));
-        clipped_bounds[4] = glm::max(raw_bounds[4], static_cast<double>(params.split_plane_z[0]));
-        clipped_bounds[5] = glm::min(raw_bounds[5], static_cast<double>(params.split_plane_z[1]));
+        clipped_bounds[0] = glm::max(raw_bounds[0], static_cast<double>(params.split_plane_x[0]) * params.axis_scale[0]);
+        clipped_bounds[1] = glm::min(raw_bounds[1], static_cast<double>(params.split_plane_x[1]) * params.axis_scale[0]);
+        clipped_bounds[2] = glm::max(raw_bounds[2], static_cast<double>(params.split_plane_y[0]) * params.axis_scale[1]);
+        clipped_bounds[3] = glm::min(raw_bounds[3], static_cast<double>(params.split_plane_y[1]) * params.axis_scale[1]);
+        clipped_bounds[4] = glm::max(raw_bounds[4], static_cast<double>(params.split_plane_z[0]) * params.axis_scale[2]);
+        clipped_bounds[5] = glm::min(raw_bounds[5], static_cast<double>(params.split_plane_z[1]) * params.axis_scale[2]);
         volumeMapper->SetCropping(true);
         volumeMapper->SetCroppingRegionPlanes(clipped_bounds);
         //volumeMapper->SetSampleDistance(static_cast<float>((clipped_bounds[maxDim * 2 + 1] - clipped_bounds[maxDim * 2]) / maxSize));
@@ -284,8 +287,6 @@ int main(int argc, char* argv[])
             cubeAxes->DrawZGridlinesOn();
             cubeAxes->SetGridLineLocation(1);       // 0 = edges, 1 = faces
             renderer->AddActor(cubeAxes);
-
-            // TODO: add transfer function image overlay
         }
     }
 

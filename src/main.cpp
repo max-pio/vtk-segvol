@@ -22,6 +22,7 @@
 #include "read_hdf5.hpp"
 #include "read_vcfg_tf.hpp"
 #include "util.hpp"
+#include "MiniTimer.hpp"
 
 #include "args.hpp"
 
@@ -29,6 +30,8 @@ int main(int argc, char* argv[])
 {
     // PARSE ARGUMENTS
     const Config config = parseConfig(argc, argv);
+    if (config.exit_with_data_count)
+        return DATA_SET_COUNT;
 
     DataSet dataSet = config.data_set;
     if (!std::filesystem::exists(getDataInputPath(config, dataSet)))
@@ -64,6 +67,9 @@ int main(int argc, char* argv[])
     const vtkSmartPointer<vtkPiecewiseFunction> opacityTF = vtkSmartPointer<vtkPiecewiseFunction>::New();
 
     // VOLUME IMPORT
+    double timer_io_s = 0.;
+    double time_to_first_frame_s = 0;
+    MiniTimer timer;
     uint32_t label_min = UINT32_MAX, label_max = 0u;
     {
         const std::filesystem::path volume_file = getDataInputPath(config, dataSet);
@@ -106,6 +112,7 @@ int main(int argc, char* argv[])
             std::cout << "  labels: [" << label_min << "," << label_max << "]" << std::endl;
         }
     }
+    timer_io_s = timer.elapsed();
 
     // TRANSFER FUNCTION CREATION
     {
@@ -295,9 +302,10 @@ int main(int argc, char* argv[])
         renderWindow->OffScreenRenderingOn();
         renderWindow->MakeCurrent();  // Ensure context is current
 
-        // Render a single frame to trigger volume uploading to the GPU (should not be measured)
+        // Render a single frame to trigger volume uploading to the GPU (should not be measured in timings)
         renderWindow->Render();
         renderer->GetLastRenderTimeInSeconds();
+        time_to_first_frame_s = timer.elapsed();
         // Render and measure frame times (CPU side)
         std::vector<double> cpuRenderTimes(config.render_frames, 0.);
         for (int i = 0; i < config.render_frames; ++i)
@@ -331,6 +339,8 @@ int main(int argc, char* argv[])
             else
                 res.med = cpuRenderTimes[config.render_frames / 2];
         }
+        res.time_io_s = timer_io_s;
+        res.time_to_first_frame = time_to_first_frame_s;
 
         std::cout << "Rendered " << config.render_frames << " frames. Average render time: " << res.avg << " ms/frame." << std::endl;
 

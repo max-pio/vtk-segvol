@@ -12,7 +12,10 @@ enum DataSet
     PA66 = 4,
     WOLNY2020 = 5,
     XTMBATTERY = 6,
+    ARA2016 = 7,
+    GRIESSER2022VALIDATION = 8,
 };
+constexpr int DATA_SET_COUNT = 9;
 
 struct Config
 {
@@ -29,8 +32,9 @@ struct Config
     std::filesystem::path vcfg_base_dir = "./";
     std::optional<std::filesystem::path> vcfg_override_file = {};
     std::filesystem::path csv_result_file = "./results.csv";
-    // note: Ara2016, Griesser*, Motta2019 (large), etc. not available due to missing support for chunked files
-    DataSet data_set = AZBA;         ///< one of {AZBA, CELLS, FIBER, MOTTA2019SMALL, PA66, WOLNY2020, XTMBATTERY};
+    // note: Griesser2022-sample, Motta2019, H01-wm, H01-bloodvessel, liconn unavailable: exceed 64 GB RAM.
+    DataSet data_set = AZBA;
+    bool exit_with_data_count = false;  ///< returns the data set count and exits
 };
 
 
@@ -39,9 +43,9 @@ std::filesystem::path getDataInputPath(const Config& config, const DataSet data)
     std::filesystem::path postfix = {};
     switch (data)
     {
-    // case ARA2016:
-    //     postfix = "Ara2016/x0y0z0.hdf5";
-    //     break;
+    case ARA2016:
+        postfix = "Ara2016/Ara2016_full.hdf5";
+        break;
     case AZBA:
         postfix = "azba/azba.hdf5";
         break;
@@ -51,9 +55,9 @@ std::filesystem::path getDataInputPath(const Config& config, const DataSet data)
     case FIBER:
         postfix = "fiber/maurer_glassfiberpolymer.hdf5";
         break;
-    // case GRIESSER2022VAL:
-    //     postfix = "Griesser2022-validation/Griesser2022-validation_x0y0z0.hdf5";
-    //     break;
+    case GRIESSER2022VALIDATION:
+        postfix = "Griesser2022-validation/Griesser2022-validation_full.hdf5";
+        break;
     case MOTTA2019SMALL:
         postfix = "Motta2019-small/Motta2019_x2y3z2.hdf5";
         break;
@@ -77,16 +81,16 @@ inline std::string getDataOutputName(const DataSet data)
 {
     switch (data)
     {
-    // case ARA2016:
-    //     return "Ara2016";
+    case ARA2016:
+        return "Ara2016";
     case AZBA:
         return "azba";
     case CELLS:
         return "cells";
     case FIBER:
         return "fiber";
-    // case GRIESSER2022VAL:
-    //     return "Griesser2022-validation";
+    case GRIESSER2022VALIDATION:
+        return "Griesser2022-validation";
     case MOTTA2019SMALL:
         return "Motta2019-small";
     case PA66:
@@ -153,16 +157,17 @@ inline Config parseConfig(int argc, char** argv)
     TCLAP::ValueArg<int> dataSetArg("d", "data-set",
     "Data set index in [0 ... 6]", false, config.data_set, "int", cmd);
     TCLAP::SwitchArg listDataArg("", "list-data",
-        "Prints all data set IDs to the console.", cmd, false);
+        "Prints all data set IDs to the console and exits. Returns the data set count.", cmd, false);
 
     cmd.parse(argc, argv);
 
     if (listDataArg.isSet())
     {
         std::cout << "Available data sets:" << std::endl;
-        for (int i = 0; i < 6; i++)
+        for (int i = 0; i < DATA_SET_COUNT; i++)
             std::cout << i << ": " << getDataOutputName(static_cast<DataSet>(i)) << std::endl;
         std::cout << std::endl;
+        config.exit_with_data_count = true;
     }
 
     config.verbose       = verboseArg.getValue();

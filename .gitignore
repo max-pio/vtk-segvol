@@ -4,5 +4,7 @@ extern/tclap
 extern/HighFive
 out/*
 results/*
+_results/*
+__results/*
 volcanite-eval-setup.txt
 vulkan_pipeline_cache.data

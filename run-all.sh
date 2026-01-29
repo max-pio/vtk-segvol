@@ -38,7 +38,8 @@ if [ -n "${entry_command+x}" ]; then
 fi
 
 # VTK Renderings of the "image" evaluation (1024 still camera frames) for data sets that fit into memory
-for i in {0..6}; do
+DATA_COUNT=$(./cmake-build-release/vtk-segvol --list-data)
+for ((i=0; i<DATA_COUNT; i++)) do
   ./cmake-build-release/vtk-segvol --data-dir $csgv_dir/ --vcfg-dir $vcfg_dir/ --results-file ./results/vtk-eval.csv --image-dir ./results/ -d $i -f 1024
 done
 

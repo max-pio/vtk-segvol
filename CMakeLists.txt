@@ -79,11 +79,13 @@ add_executable(vtk-segvol
         extern/stb/stb_image.cpp
         extern/stb/stb_image_write.hpp
         #
-        main.cpp
-        args.hpp
-        util.hpp
-        read_hdf5.hpp
-        read_vcfg_tf.hpp
+        src/main.cpp
+        src/args.hpp
+        src/Camera.hpp
+        src/MiniTimer.hpp
+        src/read_hdf5.hpp
+        src/read_vcfg_tf.hpp
+        src/util.hpp
 )
 
 # link libraries

@@ -191,6 +191,8 @@ struct EvalResult
     double var = 0.f;
     double med = 0.f;
     double frame[16] = {0.};
+    double time_io_s = 0.f;
+    double time_to_first_frame = 0.f;
 };
 
 inline void exportResults(const std::string& name, const EvalResult &result, const std::filesystem::path& file, bool consoleLog = true)
@@ -206,6 +208,8 @@ inline void exportResults(const std::string& name, const EvalResult &result, con
         std::cout << "  avg: " << result.avg << std::endl;
         std::cout << "  sdv: " << std::sqrt(result.var) << std::endl;
         std::cout << "  max: " << result.max << std::endl;
+        std::cout << "  time preprocess/IO:  " << result.time_io_s << std::endl;
+        std::cout << "  time to first frame: " << result.time_to_first_frame << std::endl;
     }
 
     const bool newFile = !std::filesystem::exists(file);
@@ -231,7 +235,7 @@ inline void exportResults(const std::string& name, const EvalResult &result, con
         logFile << "Data Set,frame min [ms],frame avg [ms],frame max [ms],stdv,frame med [ms]";
         for (int i = 0; i < sizeof(EvalResult::frame)/sizeof(double); i++)
             logFile << ",frame" << i;
-        logFile << ",time" << std::endl;
+        logFile << "preprocess IO time [s],time to first frame [s],time" << std::endl;
     }
 
     logFile << "# " << time_buf << ", VTK Version " << vtkVersion::GetVTKVersion() << std::endl;
@@ -241,6 +245,7 @@ inline void exportResults(const std::string& name, const EvalResult &result, con
     logFile << result.min << "," << result.avg << "," << result.max << "," << std::sqrt(result.var) << "," << result.med;
     for (const double f : result.frame)
         logFile << "," << f;
+    logFile << "," << result.time_io_s << "," << result.time_to_first_frame;
     logFile << "," << time_buf;
     logFile << std::endl;
 

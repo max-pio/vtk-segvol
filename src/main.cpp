@@ -181,10 +181,6 @@ int main(int argc, char* argv[])
     // GlobalIllumination (e.g. Shadows) have no effect on the vtkGPURayCastMapper / are not supported
     volumeProperty->SetShade(true);
     volumeProperty->SetAmbient(0.3);
-    // Create rendering window
-    vtkSmartPointer<vtkRenderWindow> renderWindow = vtkSmartPointer<vtkRenderWindow>::New();
-    renderWindow->AddRenderer(renderer);
-    renderWindow->SetSize(config.render_width, config.render_height);
 
     // CAMERA AND VOLUME TRANSFORMATIONS
     {
@@ -297,12 +293,18 @@ int main(int argc, char* argv[])
 
     // RENDERING -------------------------------------------------------------------------------------------------------
 
+    // Create rendering window
+    vtkSmartPointer<vtkRenderWindow> renderWindow = vtkSmartPointer<vtkRenderWindow>::New();
+    renderWindow->AddRenderer(renderer);
+    renderWindow->SetSize(config.render_width, config.render_height);
+
     if (config.offscreen)
     {
         renderWindow->OffScreenRenderingOn();
-        renderWindow->MakeCurrent();  // Ensure context is current
+        renderWindow->MakeCurrent();
 
-        // Render a single frame to trigger volume uploading to the GPU (should not be measured in timings)
+        // render a single frame to trigger volume uploading to the GPU
+        // (interpreted as preprocessing = should not be measured in timings, but gives us the time to first frame)
         renderWindow->Render();
         renderer->GetLastRenderTimeInSeconds();
         time_to_first_frame_s = timer.elapsed();

@@ -20,7 +20,7 @@ constexpr int DATA_SET_COUNT = 9;
 struct Config
 {
     bool verbose = false;
-    int render_width = 1902;
+    int render_width = 1920;
     int render_height = 1080;
     int render_frames = 300;
     bool offscreen = false;
@@ -38,6 +38,7 @@ struct Config
 };
 
 
+// TODO: separate all code paths / configs for the Volcanite evaluation from the more general code
 std::filesystem::path getDataInputPath(const Config& config, const DataSet data)
 {
     std::filesystem::path postfix = {};

@@ -1,17 +1,28 @@
-# VTK Segmentation Volume Rendering Example
+# VTK Segmentation Volume Rendering
 
-Similar to the [SimpleRayCast example](https://examples.vtk.org/site/Cxx/VolumeRendering/SimpleRayCast/), this repository provides a baseline for rendering segmentation volume 3D voxel data
-sets.
-Each voxel is assumed to store an integer label.
-The example can be used for simple timing measurements.
+This project accurately renders segmentation volumes* from [Volcanite](https://github.com/max-pio/volcanite) configurations.
+In particular, it creates the comparative timing and image evaluation results for the Volcanite paper.
+More generally, the code samples in this repository provide a baseline for rendering segmentation volume 3D voxel data
+sets (similar to the [VTK SimpleRayCast example](https://examples.vtk.org/site/Cxx/VolumeRendering/SimpleRayCast/)).
 
-1. Prerequisites: Building VTK from Source
+*\*Segmentation volumes store an integer object label per voxel (here assumed to be 32 bit unsigned).
+All voxels with the same label belong to the same object. This segments the space into separate object regions.*
 
-Due to a current incompatibility bug with the expat library, [VTK](https://gitlab.kitware.com/vtk/) versions before 9.3.1 are unable to open most .vti files.
-Unfortunately, Ubuntu system packages only provide version 9.3.0.
-To build VTK from source:
 
-Checkout new VTK version git:
+## 1. Prerequisites: Install VTK
+
+On Ubuntu, the easiest way to install VTK libraries is a package installinstall:
+```
+sudo apt install libvtk9-dev
+```
+
+*Note: Due to an incompatibility bug with the expat library, [VTK](https://gitlab.kitware.com/vtk/) versions before 9.3.1 are unable to open most .vti files.
+Unfortunately, Ubuntu system packages currently (2026/01) only provide version 9.3.0.
+If one needs to open .vti files, it is necessary to build VTK from source.*
+
+### Optional: Build VTK from source
+
+Checkout new VTK version from git:
 ```bash
 mkdir -p ~/vtk
 git clone --recursive https://gitlab.kitware.com/vtk/vtk.git ~/vtk/source
@@ -26,12 +37,14 @@ sudo apt install build-essential cmake cmake-curses-gui mesa-common-dev mesa-uti
 
 mkdir -p ~/vtk/build
 cd ~/vtk/build
-cmake -GNinja ../path/to/vtk/source
+cmake -GNinja ../source
 
-cmake --build ~/vtk/build --config Release -j --target install
+sudo cmake --build ~/vtk/build --config Release -j --target install
 ```
 
-2. Build VTK Segmenation Volume Rendering project
+## 2. Build Project
+
+In vtk-segvol source directory:
 ```bash
 mkdir -p ./cmake-build-release
 cd ./cmake-build-release
@@ -40,7 +53,7 @@ cmake --build . -j
 ```
 
 
-3. Run the evaluation
+## 3. Run the evaluation
 
 Provide data sets using the data download scripts from the [Volcanite evaluation](https://github.com/max-pio/volcanite/tree/main/eval).
 This will download the data sets, compile Volcanite, and create a `volcanite-eval-setup.txt` file containing the following keys:

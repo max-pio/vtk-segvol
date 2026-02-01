@@ -36,7 +36,7 @@ if (ENABLE_HDF5_SUPPORT)
         FetchContent_Declare(
                 HighFive
                 GIT_REPOSITORY https://github.com/highfive-devs/highfive/
-                GIT_TAG v2.2.2
+                GIT_TAG  v3.3.0
                 #SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/extern/HighFive
         )
 
@@ -97,7 +97,7 @@ if (HDF5_FOUND)
 endif ()
 
 # add include directories
-target_include_directories(vtk-segvol PRIVATE extern volume/include)
+target_include_directories(vtk-segvol PRIVATE extern ${tclap_SOURCE_DIR}/include)
 
 # initialize VTK
 vtk_module_autoinit(

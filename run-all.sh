@@ -38,7 +38,8 @@ if [ -n "${entry_command+x}" ]; then
 fi
 
 # VTK Renderings of the "image" evaluation (1024 still camera frames) for data sets that fit into memory
-DATA_COUNT=$(./cmake-build-release/vtk-segvol --list-data)
+./cmake-build-release/vtk-segvol --list-data
+DATA_COUNT=$?
 for ((i=0; i<DATA_COUNT; i++)) do
   ./cmake-build-release/vtk-segvol --data-dir $csgv_dir/ --vcfg-dir $vcfg_dir/ --results-file ./results/vtk-eval.csv --image-dir ./results/ -d $i -f 1024
 done
@@ -48,7 +49,7 @@ done
 
 # Volcanite closeup rendering
 eval "$volcanite_src/cmake-build-release/volcanite/volcanite --headless $csgv_dir/Wolny2020.csgv --config $vcfg_dir/Wolny2020-closeup.vcfg -i ./results/Wolny2020-closeup-volcanite.png"
-eval "$volcanite_src/cmake-build-release/volcanite/volcanite --headless $csgv_dir/Wolny2020.csgv --config $vcfg_dir/Wolny2020-closeup.vcfg --config path-tracing -i ./results/Wolny2020-closeup-volcanite-pt.png"
+eval "$volcanite_src/cmake-build-release/volcanite/volcanite --headless $csgv_dir/Wolny2020.csgv --config $vcfg_dir/Wolny2020-closeup.vcfg --config path-tracing --config \"[Display] Accumulation_Frames: 4096\" -i ./results/Wolny2020-closeup-volcanite-pt.png"
 
 # Execute exit-command if present
 if [ -n "${exit_command+x}" ]; then

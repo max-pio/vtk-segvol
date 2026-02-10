@@ -41,15 +41,15 @@ fi
 ./cmake-build-release/vtk-segvol --list-data
 DATA_COUNT=$?
 for ((i=0; i<DATA_COUNT; i++)) do
-  ./cmake-build-release/vtk-segvol --data-dir $csgv_dir/ --vcfg-dir $vcfg_dir/ --results-file ./results/vtk-eval.csv --image-dir ./results/ -d $i -f 1024
+  ./cmake-build-release/vtk-segvol --data-dir $csgv_dir/ --vcfg-dir $vcfg_dir/ --results-file ./vtk-eval/vtk-eval.csv --image-dir ./vtk-eval/ -d $i -f 1024
 done
 
 # VTK closeup rendering
 ./cmake-build-release/vtk-segvol --data-dir $csgv_dir/ --vcfg-file $vcfg_dir/Wolny2020-closeup.vcfg --image-output-file ./results/Wolny2020-closeup.png -d 5 -f 32
 
 # Volcanite closeup rendering
-eval "$volcanite_src/cmake-build-release/volcanite/volcanite --headless $csgv_dir/Wolny2020.csgv --config $vcfg_dir/Wolny2020-closeup.vcfg -i ./results/Wolny2020-closeup-volcanite.png"
-eval "$volcanite_src/cmake-build-release/volcanite/volcanite --headless $csgv_dir/Wolny2020.csgv --config $vcfg_dir/Wolny2020-closeup.vcfg --config path-tracing --config \"[Display] Accumulation_Frames: 4096\" -i ./results/Wolny2020-closeup-volcanite-pt.png"
+eval "$volcanite_src/cmake-build-release/volcanite/volcanite --headless $csgv_dir/Wolny2020.csgv --config $vcfg_dir/Wolny2020-closeup.vcfg -i ./vtk-eval/Wolny2020-closeup-volcanite.png"
+eval "$volcanite_src/cmake-build-release/volcanite/volcanite --headless $csgv_dir/Wolny2020.csgv --config $vcfg_dir/Wolny2020-closeup.vcfg --config path-tracing --config \"[Display] Accumulation_Frames: 4096\" -i ./vtk-eval/Wolny2020-closeup-volcanite-pt.png"
 
 # Execute exit-command if present
 if [ -n "${exit_command+x}" ]; then

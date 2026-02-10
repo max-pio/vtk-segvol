@@ -235,7 +235,7 @@ inline void exportResults(const std::string& name, const EvalResult &result, con
         logFile << "Data Set,frame min [ms],frame avg [ms],frame max [ms],stdv,frame med [ms]";
         for (int i = 0; i < sizeof(EvalResult::frame)/sizeof(double); i++)
             logFile << ",frame" << i;
-        logFile << "preprocess IO time [s],time to first frame [s],time" << std::endl;
+        logFile << ",preprocess IO time [s],time to first frame [s],time" << std::endl;
     }
 
     logFile << "# " << time_buf << ", VTK Version " << vtkVersion::GetVTKVersion() << std::endl;

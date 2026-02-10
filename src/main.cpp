@@ -140,7 +140,9 @@ int main(int argc, char* argv[])
                                  0.8f,
                                  1.f);
         // fill the opacity TF from the materials opacity vector
-        //constexpr int TF_SIZE = (1 << 16) - 1;
+        // constexpr int TF_SIZE = (1 << 16) - 1;
+        // if the transfer function texture size (= [min-max]/d where d is the minimal distance between neighboring points)
+        // exceeds the OpenGL texture size limit (e.g. ), it must be rescaled. This creates false opacity lookups.
         const uint32_t TF_SIZE = label_max;
         opacityTF->AddPoint(0., 0.0);
         opacityTF->AddPoint(TF_SIZE, 0.0);

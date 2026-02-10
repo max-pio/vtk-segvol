@@ -3,6 +3,7 @@ cmake-build-*/*
 extern/tclap
 extern/HighFive
 out/*
+vtk-eval/*
 results/*
 _results/*
 __results/*
